@@ -63,18 +63,19 @@ async function createCalendarEvent(booking) {
 /* ================= EMAIL SETUP ================= */
 
 const transporter = nodemailer.createTransport({
+  // Use the direct host, but we will force the family to 4
   host: "smtp.gmail.com",
   port: 465,
-  secure: true, // Use SSL
+  secure: true,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  // FORCING IPV4 HERE:
+  family: 4, 
   tls: {
-    // This helps if the server has strict network rules
-    rejectUnauthorized: false 
-  },
-  connectionTimeout: 10000, // Wait 10 seconds before giving up
+    rejectUnauthorized: false
+  }
 });
 
 async function sendEmails(booking) {
