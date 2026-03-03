@@ -13,7 +13,20 @@ const PORT = process.env.PORT || 5000;
 
 /* ================= GOOGLE CALENDAR SETUP ================= */
 
-const keys = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+/* ================= GOOGLE CALENDAR SETUP ================= */
+let keys;
+
+try {
+  if (process.env.NODE_ENV === "production") {
+    // On Render: Load the Secret File you created
+    keys = require("./google-key.json");
+  } else {
+    // Locally: Parse the string from your .env
+    keys = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+  }
+} catch (error) {
+  console.error("Failed to load Google Keys:", error.message);
+}
 
 const auth = new google.auth.GoogleAuth({
   credentials: keys,
@@ -21,7 +34,6 @@ const auth = new google.auth.GoogleAuth({
 });
 
 const calendar = google.calendar({ version: "v3" });
-
 async function createCalendarEvent(booking) {
   const client = await auth.getClient();
 
@@ -114,6 +126,7 @@ async function verifyFlutterwave(transaction_id) {
 }
 
 /* ================= VERIFY PAYMENT ROUTE ================= */
+/* ================= VERIFY PAYMENT ROUTE ================= */
 
 app.post("/verify-payment", async (req, res) => {
   try {
@@ -129,11 +142,10 @@ app.post("/verify-payment", async (req, res) => {
 
     let paymentVerified = false;
 
+    // 1. Verify Payment
     if (paymentProvider === "paystack") {
       paymentVerified = await verifyPaystack(reference);
-    }
-
-    if (paymentProvider === "flutterwave") {
+    } else if (paymentProvider === "flutterwave") {
       paymentVerified = await verifyFlutterwave(transaction_id);
     }
 
@@ -143,18 +155,62 @@ app.post("/verify-payment", async (req, res) => {
 
     const booking = { name, email, startTime, endTime };
 
-    await createCalendarEvent(booking);
-    await sendEmails(booking);
+    // 2. Attempt Google Calendar (Isolated)
+    try {
+      await createCalendarEvent(booking);
+      console.log("✅ Google Calendar event created.");
+    } catch (calError) {
+      console.error("❌ Google Calendar Error:", calError.message);
+      // We don't 'return' here, so the code continues to the email step
+    }
 
-    res.json({ message: "Booking successful and confirmed" });
+    // 3. Attempt Email (Isolated)
+    try {
+      await sendEmails(booking);
+      console.log("✅ Confirmation emails sent.");
+    } catch (mailError) {
+      console.error("❌ Nodemailer Error:", mailError.message);
+    }
+
+    // 4. Send success to frontend regardless of minor background failures
+    res.json({ message: "Booking process completed successfully" });
+
   } catch (error) {
-    console.error(error.response?.data || error.message);
-    res.status(500).json({ message: "Server error" });
+    console.error("SYSTEM ERROR:", error.message);
+    res.status(500).json({ message: "Internal Server Error" });
   }
 });
-
 /* ================= START SERVER ================= */
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+// Render requires the server to listen on 0.0.0.0
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server is running and listening on port ${PORT}`);
+});
+
+
+/* ================= DEBUG / TEST ROUTE ================= */
+app.get("/test-calendar", async (req, res) => {
+  try {
+    const testBooking = {
+      name: "Test User",
+      email: process.env.ADMIN_EMAIL,
+      startTime: new Date().toISOString(),
+      endTime: new Date(Date.now() + 3600000).toISOString(), // 1 hour later
+    };
+
+    console.log("Attempting test calendar event...");
+    await createCalendarEvent(testBooking);
+    
+    res.json({ 
+      status: "Success", 
+      message: "Check your Google Calendar! An event should be there." 
+    });
+  } catch (error) {
+    console.error("Test Route Error:", error);
+    res.status(500).json({ 
+      status: "Error", 
+      message: error.message,
+      details: "Check Render logs for the full stack trace."
+    });
+  }
 });
