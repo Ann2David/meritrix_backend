@@ -180,12 +180,8 @@ app.post("/verify-payment", async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 });
-/* ================= START SERVER ================= */
 
-// Render requires the server to listen on 0.0.0.0
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server is running and listening on port ${PORT}`);
-});
+
 
 
 /* ================= DEBUG / TEST ROUTE ================= */
@@ -213,4 +209,14 @@ app.get("/test-calendar", async (req, res) => {
       details: "Check Render logs for the full stack trace."
     });
   }
+});
+
+
+
+
+/* ================= START SERVER ================= */
+
+// Render requires the server to listen on 0.0.0.0
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server is running and listening on port ${PORT}`);
 });
