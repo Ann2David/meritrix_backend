@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 5000;
 
 /* ================= GOOGLE CALENDAR SETUP ================= */
 
-const keys = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+const keys = require('./google-key.json');
 
 const auth = new google.auth.GoogleAuth({
   credentials: keys,
