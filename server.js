@@ -2,20 +2,18 @@ require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
+const nodemailer = require("nodemailer");
 const { google } = require("googleapis");
-const { Resend } = require("resend");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 const PORT = process.env.PORT || 5000;
 
 /* ================= GOOGLE CALENDAR SETUP ================= */
 
-const keys = require('./google-key.json');
+const keys = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
 
 const auth = new google.auth.GoogleAuth({
   credentials: keys,
@@ -43,36 +41,46 @@ async function createCalendarEvent(booking) {
       },
       attendees: [
         { email: booking.email },
-        { email: process.env.ADMIN_EMAIL }
+        { email: process.env.ADMIN_EMAIL },
       ],
     },
     sendUpdates: "all",
   });
 }
 
-/* ================= EMAIL FUNCTION ================= */
+/* ================= EMAIL SETUP ================= */
 
-async function sendConfirmationEmails(booking) {
-  await resend.emails.send({
-    from: "onboarding@resend.dev",
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+async function sendEmails(booking) {
+  // Client email
+  await transporter.sendMail({
+    from: process.env.EMAIL_USER,
     to: booking.email,
-    subject: "Booking Confirmed",
+    subject: "Booking Confirmation",
     html: `
       <h2>Your booking is confirmed 🎉</h2>
-      <p>Date: ${booking.startTime}</p>
-      <p>We look forward to meeting you.</p>
+      <p><strong>Date:</strong> ${booking.startTime}</p>
+      <p>We look forward to speaking with you.</p>
     `,
   });
 
-  await resend.emails.send({
-    from: "onboarding@resend.dev",
+  // Admin email
+  await transporter.sendMail({
+    from: process.env.EMAIL_USER,
     to: process.env.ADMIN_EMAIL,
     subject: "New Booking Received",
     html: `
       <h2>New Booking Alert</h2>
-      <p>Client: ${booking.name}</p>
-      <p>Email: ${booking.email}</p>
-      <p>Time: ${booking.startTime}</p>
+      <p><strong>Client:</strong> ${booking.name}</p>
+      <p><strong>Email:</strong> ${booking.email}</p>
+      <p><strong>Time:</strong> ${booking.startTime}</p>
     `,
   });
 }
@@ -116,7 +124,7 @@ app.post("/verify-payment", async (req, res) => {
       name,
       email,
       startTime,
-      endTime
+      endTime,
     } = req.body;
 
     let paymentVerified = false;
@@ -136,20 +144,17 @@ app.post("/verify-payment", async (req, res) => {
     const booking = { name, email, startTime, endTime };
 
     await createCalendarEvent(booking);
-    await sendConfirmationEmails(booking);
+    await sendEmails(booking);
 
     res.json({ message: "Booking successful and confirmed" });
-
   } catch (error) {
-    console.error(error);
+    console.error(error.response?.data || error.message);
     res.status(500).json({ message: "Server error" });
   }
 });
 
 /* ================= START SERVER ================= */
 
-const port = process.env.PORT || 3000;
-
-app.listen(port, '0.0.0.0', () => {
-  console.log(`Server is running on port ${port}`);
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
