@@ -34,6 +34,8 @@ const auth = new google.auth.GoogleAuth({
 });
 
 const calendar = google.calendar({ version: "v3" });
+/* ================= GOOGLE CALENDAR SETUP ================= */
+
 async function createCalendarEvent(booking) {
   const client = await auth.getClient();
 
@@ -42,7 +44,8 @@ async function createCalendarEvent(booking) {
     calendarId: process.env.ADMIN_EMAIL,
     requestBody: {
       summary: `Consultation with ${booking.name}`,
-      description: `Client: ${booking.name}\nEmail: ${booking.email}`,
+      // Put the email here so you still see it in the calendar
+      description: `Client Name: ${booking.name}\nClient Email: ${booking.email}`, 
       start: {
         dateTime: booking.startTime,
         timeZone: "Africa/Lagos",
@@ -51,12 +54,9 @@ async function createCalendarEvent(booking) {
         dateTime: booking.endTime,
         timeZone: "Africa/Lagos",
       },
-      attendees: [
-        { email: booking.email },
-        { email: process.env.ADMIN_EMAIL },
-      ],
+      // REMOVE the attendees block entirely
+      // attendees: [ ... ] 
     },
-    sendUpdates: "all",
   });
 }
 
