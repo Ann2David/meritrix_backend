@@ -183,34 +183,31 @@ app.post("/verify-payment", async (req, res) => {
 
 
 
-
-/* ================= DEBUG / TEST ROUTE ================= */
-app.get("/test-calendar", async (req, res) => {
+/* ================= EMAIL DEBUG ROUTE ================= */
+app.get("/test-email", async (req, res) => {
   try {
     const testBooking = {
       name: "Test User",
-      email: process.env.ADMIN_EMAIL,
-      startTime: new Date().toISOString(),
-      endTime: new Date(Date.now() + 3600000).toISOString(), // 1 hour later
+      email: process.env.ADMIN_EMAIL, // Sends a test to yourself
+      startTime: "March 3rd, 2026 at 10:00 AM",
     };
 
-    console.log("Attempting test calendar event...");
-    await createCalendarEvent(testBooking);
+    console.log("Attempting to send test email...");
+    await sendEmails(testBooking);
     
     res.json({ 
       status: "Success", 
-      message: "Check your Google Calendar! An event should be there." 
+      message: `Check ${process.env.ADMIN_EMAIL} for the test email!` 
     });
   } catch (error) {
-    console.error("Test Route Error:", error);
+    console.error("Email Test Failed:", error);
     res.status(500).json({ 
       status: "Error", 
       message: error.message,
-      details: "Check Render logs for the full stack trace."
+      stack: error.stack // This helps see if it's a login or network error
     });
   }
 });
-
 
 
 
