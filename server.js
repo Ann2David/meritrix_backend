@@ -63,11 +63,18 @@ async function createCalendarEvent(booking) {
 /* ================= EMAIL SETUP ================= */
 
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true, // Use SSL
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  tls: {
+    // This helps if the server has strict network rules
+    rejectUnauthorized: false 
+  },
+  connectionTimeout: 10000, // Wait 10 seconds before giving up
 });
 
 async function sendEmails(booking) {
