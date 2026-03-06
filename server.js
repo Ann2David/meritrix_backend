@@ -70,41 +70,28 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 async function sendEmails(booking) {
   try {
+    console.log("Starting Resend dispatch...");
+    
     // 1. Send Confirmation to Client
-    await resend.emails.send({
-      // Use 'send' subdomain as verified in your cPanel DNS
+    const clientMail = await resend.emails.send({
       from: 'Meritrix Global <bookings@send.meritrixglobal.com>',
       to: booking.email,
       subject: "Booking Confirmation - Meritrix Global",
-      html: `
-        <div style="font-family: sans-serif; line-height: 1.6;">
-          <h2>Your booking is confirmed 🎉</h2>
-          <p>Hello <strong>${booking.name}</strong>,</p>
-          <p>Your consultation has been successfully scheduled.</p>
-          <p><strong>Date & Time:</strong> ${booking.startTime} (WAT)</p>
-          <hr />
-          <p>We look forward to speaking with you.</p>
-        </div>
-      `,
+      html: `<h2>Your booking is confirmed 🎉</h2>...` // keep your existing HTML
     });
+    console.log("Client email response:", clientMail);
 
     // 2. Send Alert to Admin
-    await resend.emails.send({
+    const adminMail = await resend.emails.send({
       from: 'System Alert <alerts@send.meritrixglobal.com>',
       to: process.env.ADMIN_EMAIL,
       subject: "New Booking Received",
-      html: `
-        <h2>New Booking Alert</h2>
-        <p><strong>Client:</strong> ${booking.name}</p>
-        <p><strong>Email:</strong> ${booking.email}</p>
-        <p><strong>Time:</strong> ${booking.startTime}</p>
-      `,
+      html: `<h2>New Booking Alert</h2>...` // keep your existing HTML
     });
+    console.log("Admin email response:", adminMail);
 
-    console.log("✅ Resend API: Emails sent successfully.");
   } catch (error) {
-    console.error("❌ Resend API Error:", error.message);
-    // We throw the error so the test route can catch it and show you why it failed
+    console.error("❌ Resend API Function Error:", error);
     throw error; 
   }
 }
@@ -138,9 +125,8 @@ async function verifyFlutterwave(transaction_id) {
 }
 
 /* ================= VERIFY PAYMENT ROUTE ================= */
-/* ================= VERIFY PAYMENT ROUTE ================= */
-
-app.post("/verify-payment", async (req, res) => {
+ app.post("/verify-payment", async (req, res) => {
+  console.log("--- NEW BOOKING REQUEST RECEIVED ---");
   try {
     const {
       paymentProvider,
@@ -155,6 +141,7 @@ app.post("/verify-payment", async (req, res) => {
     let paymentVerified = false;
 
     // 1. Verify Payment
+    console.log(`Step 1: Verifying ${paymentProvider} payment...`);
     if (paymentProvider === "paystack") {
       paymentVerified = await verifyPaystack(reference);
     } else if (paymentProvider === "flutterwave") {
@@ -162,39 +149,42 @@ app.post("/verify-payment", async (req, res) => {
     }
 
     if (!paymentVerified) {
+      console.log("❌ Payment Verification Failed.");
       return res.status(400).json({ message: "Payment not verified" });
     }
+    console.log("✅ Payment Verified Successfully.");
 
     const booking = { name, email, startTime, endTime };
 
-    // 2. Attempt Google Calendar (Isolated)
+    // 2. Attempt Google Calendar
     try {
+      console.log("Step 2: Creating Calendar Event...");
       await createCalendarEvent(booking);
       console.log("✅ Google Calendar event created.");
     } catch (calError) {
       console.error("❌ Google Calendar Error:", calError.message);
-      // We don't 'return' here, so the code continues to the email step
     }
 
-    // 3. Attempt Email (Isolated)
+    // 3. Attempt Email (THE CRITICAL STEP)
+    console.log(`Step 3: Dispatching Resend email to ${email}...`);
     try {
       await sendEmails(booking);
-      console.log("✅ Confirmation emails sent.");
+      console.log("✅ Resend API: Confirmation emails sent.");
     } catch (mailError) {
-      console.error("❌ Nodemailer Error:", mailError.message);
+      // This will now catch the SPECIFIC Resend error (403, 401, etc.)
+      console.error("❌ Resend API ERROR IN ROUTE:", mailError.message);
     }
 
-    // 4. Send success to frontend regardless of minor background failures
+    // 4. Send success to frontend
     res.json({ message: "Booking process completed successfully" });
 
   } catch (error) {
-    console.error("SYSTEM ERROR:", error.message);
+    console.error("🚨 CRITICAL SYSTEM ERROR:", error.message);
     res.status(500).json({ message: "Internal Server Error" });
   }
 });
 
-
-/* ================= EMAIL DEBUG ROUTE ================= 
+/* ================= EMAIL DEBUG ROUTE =================*/
 app.get("/test-email", async (req, res) => {
   try {
     const testBooking = {
@@ -218,7 +208,7 @@ app.get("/test-email", async (req, res) => {
     });
   }
 });
-*/
+
 
 
 /* ================= START SERVER ================= */
