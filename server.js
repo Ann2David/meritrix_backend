@@ -60,49 +60,53 @@ async function createCalendarEvent(booking) {
   });
 }
 
-/* ================= EMAIL SETUP ================= */
 
-const transporter = nodemailer.createTransport({
-  // Use the direct host, but we will force the family to 4
-  host: "smtp.gmail.com",
-  port: 465,
-  secure: true,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  // FORCING IPV4 HERE:
-  family: 4, 
-  tls: {
-    rejectUnauthorized: false
-  }
-});
+
+/* ================= EMAIL SETUP (RESEND API) ================= */
+const { Resend } = require('resend');
+
+// Initialize Resend with your API Key
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 async function sendEmails(booking) {
-  // Client email
-  await transporter.sendMail({
-    from: process.env.EMAIL_USER,
-    to: booking.email,
-    subject: "Booking Confirmation",
-    html: `
-      <h2>Your booking is confirmed 🎉</h2>
-      <p><strong>Date:</strong> ${booking.startTime}</p>
-      <p>We look forward to speaking with you.</p>
-    `,
-  });
+  try {
+    // 1. Send Confirmation to Client
+    await resend.emails.send({
+      // Use 'send' subdomain as verified in your cPanel DNS
+      from: 'Meritrix Global <bookings@send.meritrixglobal.com>',
+      to: booking.email,
+      subject: "Booking Confirmation - Meritrix Global",
+      html: `
+        <div style="font-family: sans-serif; line-height: 1.6;">
+          <h2>Your booking is confirmed 🎉</h2>
+          <p>Hello <strong>${booking.name}</strong>,</p>
+          <p>Your consultation has been successfully scheduled.</p>
+          <p><strong>Date & Time:</strong> ${booking.startTime} (WAT)</p>
+          <hr />
+          <p>We look forward to speaking with you.</p>
+        </div>
+      `,
+    });
 
-  // Admin email
-  await transporter.sendMail({
-    from: process.env.EMAIL_USER,
-    to: process.env.ADMIN_EMAIL,
-    subject: "New Booking Received",
-    html: `
-      <h2>New Booking Alert</h2>
-      <p><strong>Client:</strong> ${booking.name}</p>
-      <p><strong>Email:</strong> ${booking.email}</p>
-      <p><strong>Time:</strong> ${booking.startTime}</p>
-    `,
-  });
+    // 2. Send Alert to Admin
+    await resend.emails.send({
+      from: 'System Alert <alerts@send.meritrixglobal.com>',
+      to: process.env.ADMIN_EMAIL,
+      subject: "New Booking Received",
+      html: `
+        <h2>New Booking Alert</h2>
+        <p><strong>Client:</strong> ${booking.name}</p>
+        <p><strong>Email:</strong> ${booking.email}</p>
+        <p><strong>Time:</strong> ${booking.startTime}</p>
+      `,
+    });
+
+    console.log("✅ Resend API: Emails sent successfully.");
+  } catch (error) {
+    console.error("❌ Resend API Error:", error.message);
+    // We throw the error so the test route can catch it and show you why it failed
+    throw error; 
+  }
 }
 
 /* ================= PAYMENT VERIFICATION ================= */
@@ -225,3 +229,5 @@ app.get("/test-email", async (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running and listening on port ${PORT}`);
 });
+
+
