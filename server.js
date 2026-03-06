@@ -62,64 +62,76 @@ async function createCalendarEvent(booking) {
 
 
 
-/* ================= EMAIL SETUP (NODEMAILER) ================= */
-
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+/* ================= EMAIL SETUP (AHASEND) ================= */
 
 async function sendEmails(booking) {
   try {
-    console.log("Starting Nodemailer dispatch...");
+    console.log("Sending email via AhaSend...");
 
-    // Email to client
-    const clientMailOptions = {
-      from: `"Meritrix Global" <${process.env.EMAIL_USER}>`,
-      to: booking.email,
+    const emailData = {
+      from: process.env.ADMIN_EMAIL,
+      to: [booking.email],
       subject: "Booking Confirmation - Meritrix Global",
       html: `
         <h2>Your booking is confirmed 🎉</h2>
-        <p>Dear ${booking.name},</p>
+        <p>Hello ${booking.name},</p>
+
         <p>Your consultation has been successfully scheduled.</p>
 
-        <p><strong>Date:</strong> ${booking.startTime}</p>
-
-        <p>Thank you for booking with Meritrix Global.</p>
-      `,
-    };
-
-    await transporter.sendMail(clientMailOptions);
-    console.log("Client email sent");
-
-    // Email to admin
-    const adminMailOptions = {
-      from: `"Booking System" <${process.env.EMAIL_USER}>`,
-      to: process.env.ADMIN_EMAIL,
-      subject: "New Booking Received",
-      html: `
-        <h2>New Booking Alert</h2>
-        <p><strong>Name:</strong> ${booking.name}</p>
-        <p><strong>Email:</strong> ${booking.email}</p>
         <p><strong>Start Time:</strong> ${booking.startTime}</p>
         <p><strong>End Time:</strong> ${booking.endTime}</p>
-      `,
+
+        <p>Thank you for choosing Meritrix Global.</p>
+      `
     };
 
-    await transporter.sendMail(adminMailOptions);
-    console.log("Admin email sent");
+    await axios.post(
+      "https://api.ahasend.com/v1/email/send",
+      emailData,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.AHASEND_API_KEY}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    console.log("Client confirmation email sent");
+
+    // ADMIN EMAIL
+    await axios.post(
+      "https://api.ahasend.com/v1/email/send",
+      {
+        from: process.env.ADMIN_EMAIL,
+        to: [process.env.ADMIN_EMAIL],
+        subject: "New Booking Received",
+        html: `
+          <h2>New Booking</h2>
+
+          <p><strong>Name:</strong> ${booking.name}</p>
+          <p><strong>Email:</strong> ${booking.email}</p>
+          <p><strong>Start:</strong> ${booking.startTime}</p>
+          <p><strong>End:</strong> ${booking.endTime}</p>
+        `
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.AHASEND_API_KEY}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    console.log("Admin alert email sent");
 
   } catch (error) {
-    console.error("Email sending failed:", error);
-    throw error;
+    console.error("AhaSend email error:", error.response?.data || error.message);
   }
 }
 
+
 /* ================= VERIFY PAYMENT ROUTE ================= */
- app.post("/verify-payment", async (req, res) => {
+app.post("/verify-payment", async (req, res) => {
   console.log("--- NEW BOOKING REQUEST RECEIVED ---");
   try {
     const {
@@ -159,14 +171,13 @@ async function sendEmails(booking) {
       console.error("❌ Google Calendar Error:", calError.message);
     }
 
-    // 3. Attempt Email (THE CRITICAL STEP)
-    console.log(`Step 3: Dispatching Resend email to ${email}...`);
+    // 3. Attempt Email via AhaSend
+    console.log(`Step 3: Sending email via AhaSend to ${email}...`);
     try {
-      await sendEmails(booking);
-      console.log("✅ Resend API: Confirmation emails sent.");
+      await sendEmails(booking); // this is the function we set up for AhaSend
+      console.log("✅ AhaSend: Confirmation emails sent.");
     } catch (mailError) {
-      // This will now catch the SPECIFIC Resend error (403, 401, etc.)
-      console.error("❌ Resend API ERROR IN ROUTE:", mailError.message);
+      console.error("❌ AhaSend ERROR IN ROUTE:", mailError.response?.data || mailError.message);
     }
 
     // 4. Send success to frontend
