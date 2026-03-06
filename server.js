@@ -62,66 +62,60 @@ async function createCalendarEvent(booking) {
 
 
 
-/* ================= EMAIL SETUP (RESEND API) ================= */
-const { Resend } = require('resend');
+/* ================= EMAIL SETUP (NODEMAILER) ================= */
 
-// Initialize Resend with your API Key
-const resend = new Resend(process.env.RESEND_API_KEY);
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
 
 async function sendEmails(booking) {
   try {
-    console.log("Starting Resend dispatch...");
-    
-    // 1. Send Confirmation to Client
-    const clientMail = await resend.emails.send({
-      from: 'Meritrix Global <bookings@send.meritrixglobal.com>',
+    console.log("Starting Nodemailer dispatch...");
+
+    // Email to client
+    const clientMailOptions = {
+      from: `"Meritrix Global" <${process.env.EMAIL_USER}>`,
       to: booking.email,
       subject: "Booking Confirmation - Meritrix Global",
-      html: `<h2>Your booking is confirmed 🎉</h2>...` // keep your existing HTML
-    });
-    console.log("Client email response:", clientMail);
+      html: `
+        <h2>Your booking is confirmed 🎉</h2>
+        <p>Dear ${booking.name},</p>
+        <p>Your consultation has been successfully scheduled.</p>
 
-    // 2. Send Alert to Admin
-    const adminMail = await resend.emails.send({
-      from: 'System Alert <alerts@send.meritrixglobal.com>',
+        <p><strong>Date:</strong> ${booking.startTime}</p>
+
+        <p>Thank you for booking with Meritrix Global.</p>
+      `,
+    };
+
+    await transporter.sendMail(clientMailOptions);
+    console.log("Client email sent");
+
+    // Email to admin
+    const adminMailOptions = {
+      from: `"Booking System" <${process.env.EMAIL_USER}>`,
       to: process.env.ADMIN_EMAIL,
       subject: "New Booking Received",
-      html: `<h2>New Booking Alert</h2>...` // keep your existing HTML
-    });
-    console.log("Admin email response:", adminMail);
+      html: `
+        <h2>New Booking Alert</h2>
+        <p><strong>Name:</strong> ${booking.name}</p>
+        <p><strong>Email:</strong> ${booking.email}</p>
+        <p><strong>Start Time:</strong> ${booking.startTime}</p>
+        <p><strong>End Time:</strong> ${booking.endTime}</p>
+      `,
+    };
+
+    await transporter.sendMail(adminMailOptions);
+    console.log("Admin email sent");
 
   } catch (error) {
-    console.error("❌ Resend API Function Error:", error);
-    throw error; 
+    console.error("Email sending failed:", error);
+    throw error;
   }
-}
-
-/* ================= PAYMENT VERIFICATION ================= */
-
-async function verifyPaystack(reference) {
-  const response = await axios.get(
-    `https://api.paystack.co/transaction/verify/${reference}`,
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
-      },
-    }
-  );
-
-  return response.data.data.status === "success";
-}
-
-async function verifyFlutterwave(transaction_id) {
-  const response = await axios.get(
-    `https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`,
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}`,
-      },
-    }
-  );
-
-  return response.data.data.status === "successful";
 }
 
 /* ================= VERIFY PAYMENT ROUTE ================= */
