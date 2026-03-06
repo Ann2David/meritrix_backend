@@ -194,33 +194,31 @@ app.post("/verify-payment", async (req, res) => {
 });
 
 
-
-/* ================= EMAIL DEBUG ROUTE ================= */
+/* ================= EMAIL DEBUG ROUTE ================= 
 app.get("/test-email", async (req, res) => {
   try {
     const testBooking = {
       name: "Test User",
-      email: process.env.ADMIN_EMAIL, // Sends a test to yourself
-      startTime: "March 3rd, 2026 at 10:00 AM",
+      email: process.env.ADMIN_EMAIL, 
+      startTime: "March 6th, 2026 at 10:00 AM",
     };
 
-    console.log("Attempting to send test email...");
+    console.log("Attempting to send test email via Resend...");
     await sendEmails(testBooking);
     
     res.json({ 
       status: "Success", 
-      message: `Check ${process.env.ADMIN_EMAIL} for the test email!` 
+      message: `Check ${process.env.ADMIN_EMAIL} for the test email via Resend!` 
     });
   } catch (error) {
-    console.error("Email Test Failed:", error);
     res.status(500).json({ 
       status: "Error", 
       message: error.message,
-      stack: error.stack // This helps see if it's a login or network error
+      details: "Check if RESEND_API_KEY is set in Render and DNS is verified."
     });
   }
 });
-
+*/
 
 
 /* ================= START SERVER ================= */
