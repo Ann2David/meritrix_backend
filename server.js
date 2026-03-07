@@ -50,7 +50,7 @@ async function sendEmails(booking) {
     console.log(`--- Initiating AhaSend v2 Dispatch for: ${booking.email} ---`);
 
     // Use your verified subdomain from cPanel
-    const senderEmail = 'bookings@meritrixglobal.com';
+    const senderEmail = 'bookings@send.meritrixglobal.com';
 
     // 1. Client Confirmation (v2 Data Structure)
     await axios.post(
