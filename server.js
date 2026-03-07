@@ -63,31 +63,26 @@ async function createCalendarEvent(booking) {
 
 
 /* ================= EMAIL SETUP (AHASEND) ================= */
-
 async function sendEmails(booking) {
   try {
     console.log("Sending email via AhaSend...");
 
-    const emailData = {
-      from: process.env.ADMIN_EMAIL,
-      to: [booking.email],
-      subject: "Booking Confirmation - Meritrix Global",
-      html: `
-        <h2>Your booking is confirmed 🎉</h2>
-        <p>Hello ${booking.name},</p>
-
-        <p>Your consultation has been successfully scheduled.</p>
-
-        <p><strong>Start Time:</strong> ${booking.startTime}</p>
-        <p><strong>End Time:</strong> ${booking.endTime}</p>
-
-        <p>Thank you for choosing Meritrix Global.</p>
-      `
-    };
-
+    // Client email
     await axios.post(
       "https://api.ahasend.com/v1/email/send",
-      emailData,
+      {
+        from: `Meritrix Global <bookings@meritrixglobal.com>`, // use your verified domain email
+        to: [booking.email],
+        subject: "Booking Confirmation - Meritrix Global",
+        html: `
+          <h2>Your booking is confirmed 🎉</h2>
+          <p>Hello ${booking.name},</p>
+          <p>Your consultation has been successfully scheduled.</p>
+          <p><strong>Start:</strong> ${booking.startTime}</p>
+          <p><strong>End:</strong> ${booking.endTime}</p>
+          <p>Thank you for booking with Meritrix Global.</p>
+        `
+      },
       {
         headers: {
           Authorization: `Bearer ${process.env.AHASEND_API_KEY}`,
@@ -96,18 +91,15 @@ async function sendEmails(booking) {
       }
     );
 
-    console.log("Client confirmation email sent");
-
-    // ADMIN EMAIL
+    // Admin email
     await axios.post(
       "https://api.ahasend.com/v1/email/send",
       {
-        from: process.env.ADMIN_EMAIL,
+        from: `Meritrix Global <bookings@ymeritrixglobal.com>`,
         to: [process.env.ADMIN_EMAIL],
         subject: "New Booking Received",
         html: `
-          <h2>New Booking</h2>
-
+          <h2>New Booking Alert</h2>
           <p><strong>Name:</strong> ${booking.name}</p>
           <p><strong>Email:</strong> ${booking.email}</p>
           <p><strong>Start:</strong> ${booking.startTime}</p>
@@ -122,13 +114,12 @@ async function sendEmails(booking) {
       }
     );
 
-    console.log("Admin alert email sent");
+    console.log("✅ Emails sent successfully via AhaSend");
 
   } catch (error) {
-    console.error("AhaSend email error:", error.response?.data || error.message);
+    console.error("❌ AhaSend error:", error.response?.data || error.message);
   }
 }
-
 
 /* ================= VERIFY PAYMENT ROUTE ================= */
 app.post("/verify-payment", async (req, res) => {
@@ -190,30 +181,30 @@ app.post("/verify-payment", async (req, res) => {
 });
 
 /* ================= EMAIL DEBUG ROUTE =================*/
+/* ================= EMAIL DEBUG ROUTE =================*/
 app.get("/test-email", async (req, res) => {
   try {
     const testBooking = {
       name: "Test User",
-      email: process.env.ADMIN_EMAIL, 
-      startTime: "March 6th, 2026 at 10:00 AM",
+      email: process.env.ADMIN_EMAIL,
+      startTime: "March 7th, 2026 at 10:00 AM",
+      endTime: "March 7th, 2026 at 11:00 AM"
     };
 
-    console.log("Attempting to send test email via Resend...");
     await sendEmails(testBooking);
-    
+
     res.json({ 
       status: "Success", 
-      message: `Check ${process.env.ADMIN_EMAIL} for the test email via Resend!` 
+      message: `Check ${process.env.ADMIN_EMAIL} for the test email via AhaSend!` 
     });
   } catch (error) {
     res.status(500).json({ 
       status: "Error", 
       message: error.message,
-      details: "Check if RESEND_API_KEY is set in Render and DNS is verified."
+      details: "Check if AHASEND_API_KEY is set and domain is verified."
     });
   }
 });
-
 
 
 /* ================= START SERVER ================= */
