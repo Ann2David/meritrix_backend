@@ -46,46 +46,53 @@ async function createCalendarEvent(booking) {
 /* ================= EMAIL SETUP (AHASEND v2 API) ================= */
 async function sendEmails(booking) {
   try {
-    const senderEmail = 'bookings@meritrixglobal.com';
+    const senderEmail = 'bookings@meritrixglobal.com'; // Updated to match your verified dashboard
     const accountId = process.env.AHASEND_ACCOUNT_ID; 
     const apiUrl = `https://api.ahasend.com/v2/accounts/${accountId}/messages`;
 
-    // 1. Send to Client
+    const headers = { 
+      "Authorization": `Bearer ${process.env.AHASEND_API_KEY}`,
+      "Content-Type": "application/json" 
+    };
+
+    // 1. Client Email
     console.log(`--- Dispatching Client Email: ${booking.email} ---`);
     await axios.post(apiUrl, {
       from: { email: senderEmail, name: "Meritrix Global" },
       recipients: [{ email: booking.email, name: booking.name }],
       subject: "Booking Confirmation - Meritrix Global",
-      html_content: `<p>Hello ${booking.name}, your booking for ${booking.startTime} is confirmed.</p>`
-    }, {
-      headers: { 
-        "Authorization": `Bearer ${process.env.AHASEND_API_KEY}`,
-        "Content-Type": "application/json" 
-      },
-    });
-    console.log("✅ Client email accepted by AhaSend.");
+      html_content: `<p>Hello ${booking.name}, your booking is confirmed.</p>`
+    }, { headers });
+    console.log("✅ Client email accepted.");
 
-    // 2. Wait 2 seconds (Prevents rate-limit/spam flagging)
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // 2. Short Delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
-    // 3. Send to Admin
-    console.log(`--- Dispatching Admin Alert: ${process.env.ADMIN_EMAIL} ---`);
-    await axios.post(apiUrl, {
+    // 3. Admin Email
+    console.log(`--- Dispatching Admin Alert ---`);
+    const adminRes = await axios.post(apiUrl, {
       from: { email: senderEmail, name: "System Alert" },
       recipients: [{ email: process.env.ADMIN_EMAIL, name: "Victoria Olanipekun" }],
       subject: "New Booking Received",
-      html_content: `<p>New booking from ${booking.name} for ${booking.startTime}.</p>`
-    }, {
-      headers: { 
-        "Authorization": `Bearer ${process.env.AHASEND_API_KEY}`,
-        "Content-Type": "application/json" 
-      },
-    });
-    console.log("✅ Admin alert accepted by AhaSend.");
+      html_content: `<p>New booking from ${booking.name}.</p>`
+    }, { headers });
+
+    // Confirm the response from AhaSend was a 201/200
+    if (adminRes.status >= 200 && adminRes.status < 300) {
+       console.log("✅ Admin alert successfully handed off.");
+    }
+
+    return true; // Explicitly return to signal completion
 
   } catch (error) {
-    // This will log the EXACT error (e.g., 401 Unauthorized, 400 Bad Request)
-    console.error("❌ AhaSend v2 Error Details:", error.response?.data || error.message);
+    // This will catch the EXACT issue causing the red line
+    console.error("❌ ERROR IN DISPATCH:");
+    if (error.response) {
+      console.error("Data:", error.response.data);
+      console.error("Status:", error.response.status);
+    } else {
+      console.error(error.message);
+    }
     throw error; 
   }
 }
