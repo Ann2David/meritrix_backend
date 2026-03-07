@@ -164,23 +164,30 @@ app.post("/verify-payment", async (req, res) => {
 });
 
 // TEST ROUTE: Visit https://meritrix-backend.onrender.com/test-email
+let testEmailLock = false;
+
 app.get("/test-email", async (req, res) => {
+  if (testEmailLock) {
+    return res.status(429).json({ message: "Test already in progress" });
+  }
+  testEmailLock = true;
   try {
     const testBooking = {
       name: "Test User",
-      email: process.env.ADMIN_EMAIL, 
-      startTime: "March 7th, 2026 at 10:00 AM",
+      email: process.env.ADMIN_EMAIL,
+      startTime: new Date().toISOString(),   // ✅ Fix this too
+      endTime: new Date(Date.now() + 3600000).toISOString(), // ✅ And this
     };
     await sendEmails(testBooking);
-    res.json({ status: "Success", message: "v2 Test email sent via AhaSend!" });
+    res.json({ status: "Success" });
   } catch (error) {
-    res.status(500).json({ 
-      status: "Error", 
-      message: error.message,
-      details: error.response?.data || "Check X-API-KEY and Verified Domain."
-    });
+    res.status(500).json({ status: "Error", message: error.message });
+  } finally {
+    testEmailLock = false; // Always release the lock
   }
 });
+
+
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
