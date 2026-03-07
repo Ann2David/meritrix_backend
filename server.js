@@ -93,7 +93,7 @@ async function sendEmails(booking) {
     // 2. Send to Admin
     await axios.post(apiUrl, {
       ...emailData,
-      recipients: [{ email: process.env.ADMIN_EMAIL, name: "Admin" }],
+      recipients: [{ email: process.env.ADMIN_EMAIL, name: "Victoria Olanipekun" }],
       subject: "New Booking Received"
     }, {
       headers: {
