@@ -67,31 +67,35 @@ async function sendEmails(booking) {
 
     // 2. Short Delay
     await new Promise(resolve => setTimeout(resolve, 1500));
-   
-    // 2. Dispatch Admin Alert
-console.log("--- Dispatching Admin Alert ---");
-try {
-  const adminRes = await axios.post(apiUrl, {
-    from: { email: senderEmail, name: "System" },
-    recipients: [{ email: process.env.ADMIN_EMAIL, name: "Admin" }],
-    subject: "New Booking Received",
-    html_content: `<p>New booking alert from ${booking.name}</p>`
-  }, { 
-    headers,
-    // Prevents Axios from throwing an error on 201 Created
-    validateStatus: (status) => status >= 200 && status < 300 
-  });
 
-  if (adminRes.status === 201 || adminRes.status === 200) {
-    console.log("✅ Admin alert successfully handed off.");
+    // 3. Admin Email
+    console.log(`--- Dispatching Admin Alert ---`);
+    const adminRes = await axios.post(apiUrl, {
+      from: { email: senderEmail, name: "System Alert" },
+      recipients: [{ email: process.env.ADMIN_EMAIL, name: "Victoria Olanipekun" }],
+      subject: "New Booking Received",
+      html_content: `<p>New booking from ${booking.name}.</p>`
+    }, { headers });
+
+    // Confirm the response from AhaSend was a 201/200
+    if (adminRes.status >= 200 && adminRes.status < 300) {
+       console.log("✅ Admin alert successfully handed off.");
+    }
+
+    return true; // Explicitly return to signal completion
+
+  } catch (error) {
+    // This will catch the EXACT issue causing the red line
+    console.error("❌ ERROR IN DISPATCH:");
+    if (error.response) {
+      console.error("Data:", error.response.data);
+      console.error("Status:", error.response.status);
+    } else {
+      console.error(error.message);
+    }
+    throw error; 
   }
-} catch (adminErr) {
-  // Logs the error without turning the whole line red in Render
-  console.log("⚠️ Admin email note:", adminErr.response?.data?.message || adminErr.message);
 }
-
-// 3. FINAL STEP: Tell the frontend to STOP retrying
-return res.status(200).json({ message: "Booking process completed successfully" });
 
 /* ================= PAYMENT VERIFICATION ================= */
 
@@ -110,13 +114,13 @@ async function verifyFlutterwave(transaction_id) {
 }
 
 /* ================= ROUTES ================= */
-
 app.post("/verify-payment", async (req, res) => {
   console.log("--- Payment Verification Request ---");
   try {
     const { paymentProvider, reference, transaction_id, name, email, startTime, endTime } = req.body;
     let paymentVerified = false;
 
+    // 1. Verify Payment First
     if (paymentProvider === "paystack") {
       paymentVerified = await verifyPaystack(reference);
     } else if (paymentProvider === "flutterwave") {
@@ -128,24 +132,34 @@ app.post("/verify-payment", async (req, res) => {
       return res.status(400).json({ message: "Payment not verified" });
     }
 
-    const booking = { name, email, startTime, endTime };
+    // 2. Prepare Booking Object with ISO Dates
+    // This ensures Google Calendar doesn't reject the format
+    const booking = { 
+      name, 
+      email, 
+      startTime: new Date(startTime).toISOString(), 
+      endTime: new Date(endTime).toISOString() 
+    };
 
-    // Run Background Tasks
+    // 3. Update Calendar (Do this BEFORE emails)
     try {
       await createCalendarEvent(booking);
-      console.log("✅ Calendar Updated.");
-    } catch (e) { console.error("Calendar Error:", e.message); }
+      console.log("✅ Google Calendar event created.");
+    } catch (calendarError) {
+      // We log the error but DON'T stop the process so the user still gets their email
+      console.error("⚠️ Calendar Sync Failed:", calendarError.message);
+    }
 
-    try {
-      await sendEmails(booking);
-      console.log("✅ Emails Sent.");
-    } catch (e) { console.error("Email Error:", e.message); }
+    // 4. Send Confirmation Emails
+    await sendEmails(booking);
+    console.log("✅ Booking workflow finished.");
 
-    res.json({ message: "Booking process completed successfully" });
+    // 5. Respond to Frontend immediately to prevent retries
+    return res.status(200).json({ message: "Success" });
 
   } catch (error) {
-    console.error("🚨 SYSTEM ERROR:", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.error("🚨 CRITICAL SYSTEM ERROR:", error.message);
+    return res.status(500).json({ message: "Internal Server Error" });
   }
 });
 
