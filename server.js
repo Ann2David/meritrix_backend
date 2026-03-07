@@ -47,81 +47,63 @@ async function createCalendarEvent(booking) {
 
 async function sendEmails(booking) {
   try {
-    console.log(`--- Initiating AhaSend v2 Dispatch for: ${booking.email} ---`);
+    console.log(`--- Initiating AhaSend v2 (Messages) for: ${booking.email} ---`);
 
-    // Use your verified subdomain from cPanel
     const senderEmail = 'bookings@send.meritrixglobal.com';
+    // If you haven't added AHASEND_ACCOUNT_ID yet, you can hardcode it here for a quick test
+    const accountId = process.env.AHASEND_ACCOUNT_ID; 
 
-    // 1. Client Confirmation (v2 Data Structure)
-    await axios.post(
-      "https://api.ahasend.com/v2/email/send", 
-      {
-        from: {
-          email: senderEmail,
-          name: "Meritrix Global"
-        },
-        to: [
-          {
-            email: booking.email,
-            name: booking.name
-          }
-        ],
-        subject: "Booking Confirmation - Meritrix Global",
-        html: `
-          <div style="font-family: sans-serif; line-height: 1.6; color: #333;">
-            <h2 style="color: #2c3e50;">Your booking is confirmed 🎉</h2>
-            <p>Hello <strong>${booking.name}</strong>,</p>
-            <p>Your consultation has been successfully scheduled.</p>
-            <p><strong>Time:</strong> ${booking.startTime} (WAT)</p>
-            <hr style="border: 0; border-top: 1px solid #eee;" />
-            <p>We look forward to speaking with you.</p>
-          </div>
-        `,
-      },
-      {
-        headers: {
-          "X-API-KEY": process.env.AHASEND_API_KEY,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-    console.log("✅ v2 Client email sent successfully.");
+    const apiUrl = `https://api.ahasend.com/v2/accounts/${accountId}/messages`;
 
-    // 2. Admin Alert (v2 Data Structure)
-    await axios.post(
-      "https://api.ahasend.com/v2/email/send",
-      {
-        from: {
-          email: senderEmail,
-          name: "System Alert"
-        },
-        to: [
-          {
-            email: process.env.ADMIN_EMAIL,
-            name: "Admin"
-          }
-        ],
-        subject: "New Booking Received",
-        html: `
-          <div style="font-family: sans-serif;">
-            <h2 style="color: #e67e22;">New Booking Alert</h2>
-            <p><strong>Client Name:</strong> ${booking.name}</p>
-            <p><strong>Client Email:</strong> ${booking.email}</p>
-            <p><strong>Scheduled Time:</strong> ${booking.startTime}</p>
-          </div>
-        `,
+    const emailPayload = {
+      from: {
+        email: senderEmail,
+        name: "Meritrix Global"
       },
-      {
-        headers: {
-          "X-API-KEY": process.env.AHASEND_API_KEY,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-    console.log("✅ v2 Admin alert sent successfully.");
+      to: [
+        {
+          email: booking.email,
+          name: booking.name
+        }
+      ],
+      subject: "Booking Confirmation - Meritrix Global",
+      html: `
+        <div style="font-family: sans-serif; line-height: 1.6; color: #333;">
+          <h2 style="color: #2c3e50;">Your booking is confirmed 🎉</h2>
+          <p>Hello <strong>${booking.name}</strong>,</p>
+          <p>Your consultation has been successfully scheduled.</p>
+          <p><strong>Time:</strong> ${booking.startTime} (WAT)</p>
+          <hr style="border: 0; border-top: 1px solid #eee;" />
+          <p>We look forward to speaking with you.</p>
+        </div>
+      `
+    };
+
+    // 1. Send to Client
+    await axios.post(apiUrl, emailPayload, {
+      headers: {
+        "X-API-KEY": process.env.AHASEND_API_KEY,
+        "Content-Type": "application/json",
+      },
+    });
+    console.log("✅ AhaSend v2: Client email dispatched.");
+
+    // 2. Send to Admin
+    await axios.post(apiUrl, {
+      ...emailPayload,
+      to: [{ email: process.env.ADMIN_EMAIL, name: "Admin" }],
+      subject: "New Booking Alert"
+    }, {
+      headers: {
+        "X-API-KEY": process.env.AHASEND_API_KEY,
+        "Content-Type": "application/json",
+      },
+    });
+    console.log("✅ AhaSend v2: Admin alert dispatched.");
 
   } catch (error) {
-    console.error("❌ AhaSend v2 API Error Details:", error.response?.data || error.message);
+    // This will now catch the exact reason (e.g., "Domain not verified")
+    console.error("❌ AhaSend v2 Error:", error.response?.data || error.message);
     throw error; 
   }
 }
