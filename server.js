@@ -44,20 +44,26 @@ async function createCalendarEvent(booking) {
 }
 
 /* ================= EMAIL SETUP (AHASEND API) ================= */
-
 async function sendEmails(booking) {
   try {
-    console.log(`--- Initiating AhaSend for: ${booking.email} ---`);
+    console.log(`--- Initiating AhaSend v2 for: ${booking.email} ---`);
 
-    // Use the verified subdomain from your cPanel
-    const senderEmail = 'bookings@meritrixglobal.com';
+    const senderEmail = 'bookings@send.meritrixglobal.com';
 
-    // 1. Client Confirmation
+    // 1. Client Confirmation (v2 Endpoint)
     await axios.post(
-      "https://api.ahasend.com/v1/email/send",
+      "https://api.ahasend.com/v2/email/send", // Updated to v2
       {
-        from: `Meritrix Global <${senderEmail}>`,
-        to: [booking.email],
+        from: {
+          email: senderEmail,
+          name: "Meritrix Global"
+        },
+        to: [
+          {
+            email: booking.email,
+            name: booking.name
+          }
+        ],
         subject: "Booking Confirmation - Meritrix Global",
         html: `
           <div style="font-family: sans-serif; line-height: 1.6;">
@@ -77,14 +83,21 @@ async function sendEmails(booking) {
         },
       }
     );
-    console.log("✅ Client email sent.");
+    console.log("✅ v2 Client email sent.");
 
-    // 2. Admin Alert
+    // 2. Admin Alert (v2 Endpoint)
     await axios.post(
-      "https://api.ahasend.com/v1/email/send",
+      "https://api.ahasend.com/v2/email/send", // Updated to v2
       {
-        from: `System Alert <${senderEmail}>`,
-        to: [process.env.ADMIN_EMAIL],
+        from: {
+          email: senderEmail,
+          name: "System Alert"
+        },
+        to: [
+          {
+            email: process.env.ADMIN_EMAIL
+          }
+        ],
         subject: "New Booking Received",
         html: `
           <h2>New Booking Alert</h2>
@@ -100,10 +113,10 @@ async function sendEmails(booking) {
         },
       }
     );
-    console.log("✅ Admin alert sent.");
+    console.log("✅ v2 Admin alert sent.");
 
   } catch (error) {
-    console.error("❌ AhaSend API Error Details:", error.response?.data || error.message);
+    console.error("❌ AhaSend v2 API Error:", error.response?.data || error.message);
     throw error; 
   }
 }
