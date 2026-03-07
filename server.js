@@ -49,7 +49,7 @@ async function sendEmails(booking) {
   try {
     console.log(`--- Initiating AhaSend v2 (Messages) for: ${booking.email} ---`);
 
-    const senderEmail = 'bookings@send.meritrixglobal.com';
+    const senderEmail = 'bookings@meritrixglobal.com';
     
     // IMPORTANT: Get your Account ID from the Dashboard URL or Settings
     const accountId = process.env.AHASEND_ACCOUNT_ID; 
