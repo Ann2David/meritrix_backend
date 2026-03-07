@@ -50,24 +50,25 @@ async function sendEmails(booking) {
     console.log(`--- Initiating AhaSend v2 (Messages) for: ${booking.email} ---`);
 
     const senderEmail = 'bookings@send.meritrixglobal.com';
-    // If you haven't added AHASEND_ACCOUNT_ID yet, you can hardcode it here for a quick test
+    
+    // IMPORTANT: Get your Account ID from the Dashboard URL or Settings
     const accountId = process.env.AHASEND_ACCOUNT_ID; 
-
     const apiUrl = `https://api.ahasend.com/v2/accounts/${accountId}/messages`;
 
-    const emailPayload = {
+    const emailData = {
       from: {
         email: senderEmail,
         name: "Meritrix Global"
       },
-      to: [
+      // Note: v2 uses "recipients" array instead of "to"
+      recipients: [
         {
           email: booking.email,
           name: booking.name
         }
       ],
       subject: "Booking Confirmation - Meritrix Global",
-      html: `
+      html_content: `
         <div style="font-family: sans-serif; line-height: 1.6; color: #333;">
           <h2 style="color: #2c3e50;">Your booking is confirmed 🎉</h2>
           <p>Hello <strong>${booking.name}</strong>,</p>
@@ -80,29 +81,29 @@ async function sendEmails(booking) {
     };
 
     // 1. Send to Client
-    await axios.post(apiUrl, emailPayload, {
+    await axios.post(apiUrl, emailData, {
       headers: {
-        "X-API-KEY": process.env.AHASEND_API_KEY,
+        // v2 uses Bearer Auth, not X-API-KEY
+        "Authorization": `Bearer ${process.env.AHASEND_API_KEY}`,
         "Content-Type": "application/json",
       },
     });
-    console.log("✅ AhaSend v2: Client email dispatched.");
+    console.log("✅ AhaSend v2: Client email sent.");
 
     // 2. Send to Admin
     await axios.post(apiUrl, {
-      ...emailPayload,
-      to: [{ email: process.env.ADMIN_EMAIL, name: "Admin" }],
-      subject: "New Booking Alert"
+      ...emailData,
+      recipients: [{ email: process.env.ADMIN_EMAIL, name: "Admin" }],
+      subject: "New Booking Received"
     }, {
       headers: {
-        "X-API-KEY": process.env.AHASEND_API_KEY,
+        "Authorization": `Bearer ${process.env.AHASEND_API_KEY}`,
         "Content-Type": "application/json",
       },
     });
-    console.log("✅ AhaSend v2: Admin alert dispatched.");
+    console.log("✅ AhaSend v2: Admin alert sent.");
 
   } catch (error) {
-    // This will now catch the exact reason (e.g., "Domain not verified")
     console.error("❌ AhaSend v2 Error:", error.response?.data || error.message);
     throw error; 
   }
