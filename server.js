@@ -2,7 +2,6 @@ require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
-const nodemailer = require("nodemailer");
 const { google } = require("googleapis");
 
 const app = express();
@@ -12,16 +11,11 @@ app.use(express.json());
 const PORT = process.env.PORT || 5000;
 
 /* ================= GOOGLE CALENDAR SETUP ================= */
-
-/* ================= GOOGLE CALENDAR SETUP ================= */
 let keys;
-
 try {
   if (process.env.NODE_ENV === "production") {
-    // On Render: Load the Secret File you created
     keys = require("./google-key.json");
   } else {
-    // Locally: Parse the string from your .env
     keys = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
   }
 } catch (error) {
@@ -34,54 +28,46 @@ const auth = new google.auth.GoogleAuth({
 });
 
 const calendar = google.calendar({ version: "v3" });
-/* ================= GOOGLE CALENDAR SETUP ================= */
 
 async function createCalendarEvent(booking) {
   const client = await auth.getClient();
-
   await calendar.events.insert({
     auth: client,
     calendarId: process.env.ADMIN_EMAIL,
     requestBody: {
       summary: `Consultation with ${booking.name}`,
-      // Put the email here so you still see it in the calendar
       description: `Client Name: ${booking.name}\nClient Email: ${booking.email}`, 
-      start: {
-        dateTime: booking.startTime,
-        timeZone: "Africa/Lagos",
-      },
-      end: {
-        dateTime: booking.endTime,
-        timeZone: "Africa/Lagos",
-      },
-      // REMOVE the attendees block entirely
-      // attendees: [ ... ] 
+      start: { dateTime: booking.startTime, timeZone: "Africa/Lagos" },
+      end: { dateTime: booking.endTime, timeZone: "Africa/Lagos" },
     },
   });
 }
 
-
-
-/* ================= EMAIL SETUP (AHASEND) ================= */
-   const axios = require("axios");
+/* ================= EMAIL SETUP (AHASEND API) ================= */
 
 async function sendEmails(booking) {
   try {
-    console.log("Sending email via AhaSend...");
+    console.log(`--- Initiating AhaSend for: ${booking.email} ---`);
 
-    // Client confirmation email
+    // Use the verified subdomain from your cPanel
+    const senderEmail = 'bookings@meritrixglobal.com';
+
+    // 1. Client Confirmation
     await axios.post(
       "https://api.ahasend.com/v1/email/send",
       {
-        from: process.env.ADMIN_EMAIL,
+        from: `Meritrix Global <${senderEmail}>`,
         to: [booking.email],
         subject: "Booking Confirmation - Meritrix Global",
         html: `
-          <h2>Your booking is confirmed 🎉</h2>
-          <p>Hello ${booking.name},</p>
-          <p>Your consultation has been scheduled.</p>
-          <p><strong>Start:</strong> ${booking.startTime}</p>
-          <p><strong>End:</strong> ${booking.endTime}</p>
+          <div style="font-family: sans-serif; line-height: 1.6;">
+            <h2>Your booking is confirmed 🎉</h2>
+            <p>Hello <strong>${booking.name}</strong>,</p>
+            <p>Your consultation has been successfully scheduled.</p>
+            <p><strong>Time:</strong> ${booking.startTime} (WAT)</p>
+            <hr />
+            <p>We look forward to speaking with you.</p>
+          </div>
         `,
       },
       {
@@ -91,22 +77,20 @@ async function sendEmails(booking) {
         },
       }
     );
+    console.log("✅ Client email sent.");
 
-    console.log("Client email sent ✅");
-
-    // Admin alert email
+    // 2. Admin Alert
     await axios.post(
       "https://api.ahasend.com/v1/email/send",
       {
-        from: process.env.ADMIN_EMAIL,
+        from: `System Alert <${senderEmail}>`,
         to: [process.env.ADMIN_EMAIL],
         subject: "New Booking Received",
         html: `
-          <h2>New Booking</h2>
+          <h2>New Booking Alert</h2>
           <p><strong>Name:</strong> ${booking.name}</p>
           <p><strong>Email:</strong> ${booking.email}</p>
-          <p><strong>Start:</strong> ${booking.startTime}</p>
-          <p><strong>End:</strong> ${booking.endTime}</p>
+          <p><strong>Time:</strong> ${booking.startTime}</p>
         `,
       },
       {
@@ -116,36 +100,38 @@ async function sendEmails(booking) {
         },
       }
     );
+    console.log("✅ Admin alert sent.");
 
-    console.log("Admin email sent ✅");
   } catch (error) {
-    console.error("AhaSend email error:", error.response?.data || error.message);
+    console.error("❌ AhaSend API Error Details:", error.response?.data || error.message);
+    throw error; 
   }
 }
 
+/* ================= PAYMENT VERIFICATION ================= */
 
+async function verifyPaystack(reference) {
+  const response = await axios.get(`https://api.paystack.co/transaction/verify/${reference}`, {
+    headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
+  });
+  return response.data.data.status === "success";
+}
 
+async function verifyFlutterwave(transaction_id) {
+  const response = await axios.get(`https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`, {
+    headers: { Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}` },
+  });
+  return response.data.data.status === "successful";
+}
 
+/* ================= ROUTES ================= */
 
-
-/* ================= VERIFY PAYMENT ROUTE ================= */
 app.post("/verify-payment", async (req, res) => {
-  console.log("--- NEW BOOKING REQUEST RECEIVED ---");
+  console.log("--- Payment Verification Request ---");
   try {
-    const {
-      paymentProvider,
-      reference,
-      transaction_id,
-      name,
-      email,
-      startTime,
-      endTime,
-    } = req.body;
-
+    const { paymentProvider, reference, transaction_id, name, email, startTime, endTime } = req.body;
     let paymentVerified = false;
 
-    // 1. Verify Payment
-    console.log(`Step 1: Verifying ${paymentProvider} payment...`);
     if (paymentProvider === "paystack") {
       paymentVerified = await verifyPaystack(reference);
     } else if (paymentProvider === "flutterwave") {
@@ -153,72 +139,50 @@ app.post("/verify-payment", async (req, res) => {
     }
 
     if (!paymentVerified) {
-      console.log("❌ Payment Verification Failed.");
+      console.log("❌ Payment not verified.");
       return res.status(400).json({ message: "Payment not verified" });
     }
-    console.log("✅ Payment Verified Successfully.");
 
     const booking = { name, email, startTime, endTime };
 
-    // 2. Attempt Google Calendar
+    // Background Tasks
     try {
-      console.log("Step 2: Creating Calendar Event...");
       await createCalendarEvent(booking);
-      console.log("✅ Google Calendar event created.");
-    } catch (calError) {
-      console.error("❌ Google Calendar Error:", calError.message);
-    }
+      console.log("✅ Calendar Updated.");
+    } catch (e) { console.error("Calendar Error:", e.message); }
 
-    // 3. Attempt Email via AhaSend
-    console.log(`Step 3: Sending email via AhaSend to ${email}...`);
     try {
-      await sendEmails(booking); // this is the function we set up for AhaSend
-      console.log("✅ AhaSend: Confirmation emails sent.");
-    } catch (mailError) {
-      console.error("❌ AhaSend ERROR IN ROUTE:", mailError.response?.data || mailError.message);
-    }
+      await sendEmails(booking);
+      console.log("✅ Emails Dispatched.");
+    } catch (e) { console.error("Email Route Error:", e.message); }
 
-    // 4. Send success to frontend
     res.json({ message: "Booking process completed successfully" });
 
   } catch (error) {
-    console.error("🚨 CRITICAL SYSTEM ERROR:", error.message);
+    console.error("🚨 SYSTEM ERROR:", error.message);
     res.status(500).json({ message: "Internal Server Error" });
   }
 });
 
-/* ================= EMAIL DEBUG ROUTE =================*/
-/* ================= EMAIL DEBUG ROUTE =================*/
+// TEST ROUTE: Visit https://your-app.onrender.com/test-email to check logs
 app.get("/test-email", async (req, res) => {
   try {
     const testBooking = {
       name: "Test User",
-      email: process.env.ADMIN_EMAIL,
+      email: process.env.ADMIN_EMAIL, 
       startTime: "March 7th, 2026 at 10:00 AM",
-      endTime: "March 7th, 2026 at 11:00 AM"
     };
-
     await sendEmails(testBooking);
-
-    res.json({ 
-      status: "Success", 
-      message: `Check ${process.env.ADMIN_EMAIL} for the test email via AhaSend!` 
-    });
+    res.json({ status: "Success", message: "Test emails sent via AhaSend!" });
   } catch (error) {
     res.status(500).json({ 
       status: "Error", 
       message: error.message,
-      details: "Check if AHASEND_API_KEY is set and domain is verified."
+      details: error.response?.data || "Check X-API-KEY and Verified Domain."
     });
   }
 });
 
-
-/* ================= START SERVER ================= */
-
-// Render requires the server to listen on 0.0.0.0
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server is running and listening on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
-
-
