@@ -63,63 +63,70 @@ async function createCalendarEvent(booking) {
 
 
 /* ================= EMAIL SETUP (AHASEND) ================= */
+   const axios = require("axios");
+
 async function sendEmails(booking) {
   try {
     console.log("Sending email via AhaSend...");
 
-    // Client email
+    // Client confirmation email
     await axios.post(
       "https://api.ahasend.com/v1/email/send",
       {
-        from: `Meritrix Global <bookings@meritrixglobal.com>`, // use your verified domain email
+        from: process.env.ADMIN_EMAIL,
         to: [booking.email],
         subject: "Booking Confirmation - Meritrix Global",
         html: `
           <h2>Your booking is confirmed 🎉</h2>
           <p>Hello ${booking.name},</p>
-          <p>Your consultation has been successfully scheduled.</p>
+          <p>Your consultation has been scheduled.</p>
           <p><strong>Start:</strong> ${booking.startTime}</p>
           <p><strong>End:</strong> ${booking.endTime}</p>
-          <p>Thank you for booking with Meritrix Global.</p>
-        `
+        `,
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.AHASEND_API_KEY}`,
-          "Content-Type": "application/json"
-        }
+          "X-API-KEY": process.env.AHASEND_API_KEY,
+          "Content-Type": "application/json",
+        },
       }
     );
 
-    // Admin email
+    console.log("Client email sent ✅");
+
+    // Admin alert email
     await axios.post(
       "https://api.ahasend.com/v1/email/send",
       {
-        from: `Meritrix Global <bookings@ymeritrixglobal.com>`,
+        from: process.env.ADMIN_EMAIL,
         to: [process.env.ADMIN_EMAIL],
         subject: "New Booking Received",
         html: `
-          <h2>New Booking Alert</h2>
+          <h2>New Booking</h2>
           <p><strong>Name:</strong> ${booking.name}</p>
           <p><strong>Email:</strong> ${booking.email}</p>
           <p><strong>Start:</strong> ${booking.startTime}</p>
           <p><strong>End:</strong> ${booking.endTime}</p>
-        `
+        `,
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.AHASEND_API_KEY}`,
-          "Content-Type": "application/json"
-        }
+          "X-API-KEY": process.env.AHASEND_API_KEY,
+          "Content-Type": "application/json",
+        },
       }
     );
 
-    console.log("✅ Emails sent successfully via AhaSend");
-
+    console.log("Admin email sent ✅");
   } catch (error) {
-    console.error("❌ AhaSend error:", error.response?.data || error.message);
+    console.error("AhaSend email error:", error.response?.data || error.message);
   }
 }
+
+
+
+
+
 
 /* ================= VERIFY PAYMENT ROUTE ================= */
 app.post("/verify-payment", async (req, res) => {
