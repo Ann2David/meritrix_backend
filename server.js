@@ -43,16 +43,18 @@ async function createCalendarEvent(booking) {
   });
 }
 
-/* ================= EMAIL SETUP (AHASEND API) ================= */
+/* ================= EMAIL SETUP (AHASEND v2 API) ================= */
+
 async function sendEmails(booking) {
   try {
-    console.log(`--- Initiating AhaSend v2 for: ${booking.email} ---`);
+    console.log(`--- Initiating AhaSend v2 Dispatch for: ${booking.email} ---`);
 
-    const senderEmail = 'bookings@send.meritrixglobal.com';
+    // Use your verified subdomain from cPanel
+    const senderEmail = 'bookings@meritrixglobal.com';
 
-    // 1. Client Confirmation (v2 Endpoint)
+    // 1. Client Confirmation (v2 Data Structure)
     await axios.post(
-      "https://api.ahasend.com/v2/email/send", // Updated to v2
+      "https://api.ahasend.com/v2/email/send", 
       {
         from: {
           email: senderEmail,
@@ -66,12 +68,12 @@ async function sendEmails(booking) {
         ],
         subject: "Booking Confirmation - Meritrix Global",
         html: `
-          <div style="font-family: sans-serif; line-height: 1.6;">
-            <h2>Your booking is confirmed 🎉</h2>
+          <div style="font-family: sans-serif; line-height: 1.6; color: #333;">
+            <h2 style="color: #2c3e50;">Your booking is confirmed 🎉</h2>
             <p>Hello <strong>${booking.name}</strong>,</p>
             <p>Your consultation has been successfully scheduled.</p>
             <p><strong>Time:</strong> ${booking.startTime} (WAT)</p>
-            <hr />
+            <hr style="border: 0; border-top: 1px solid #eee;" />
             <p>We look forward to speaking with you.</p>
           </div>
         `,
@@ -83,11 +85,11 @@ async function sendEmails(booking) {
         },
       }
     );
-    console.log("✅ v2 Client email sent.");
+    console.log("✅ v2 Client email sent successfully.");
 
-    // 2. Admin Alert (v2 Endpoint)
+    // 2. Admin Alert (v2 Data Structure)
     await axios.post(
-      "https://api.ahasend.com/v2/email/send", // Updated to v2
+      "https://api.ahasend.com/v2/email/send",
       {
         from: {
           email: senderEmail,
@@ -95,15 +97,18 @@ async function sendEmails(booking) {
         },
         to: [
           {
-            email: process.env.ADMIN_EMAIL
+            email: process.env.ADMIN_EMAIL,
+            name: "Admin"
           }
         ],
         subject: "New Booking Received",
         html: `
-          <h2>New Booking Alert</h2>
-          <p><strong>Name:</strong> ${booking.name}</p>
-          <p><strong>Email:</strong> ${booking.email}</p>
-          <p><strong>Time:</strong> ${booking.startTime}</p>
+          <div style="font-family: sans-serif;">
+            <h2 style="color: #e67e22;">New Booking Alert</h2>
+            <p><strong>Client Name:</strong> ${booking.name}</p>
+            <p><strong>Client Email:</strong> ${booking.email}</p>
+            <p><strong>Scheduled Time:</strong> ${booking.startTime}</p>
+          </div>
         `,
       },
       {
@@ -113,10 +118,10 @@ async function sendEmails(booking) {
         },
       }
     );
-    console.log("✅ v2 Admin alert sent.");
+    console.log("✅ v2 Admin alert sent successfully.");
 
   } catch (error) {
-    console.error("❌ AhaSend v2 API Error:", error.response?.data || error.message);
+    console.error("❌ AhaSend v2 API Error Details:", error.response?.data || error.message);
     throw error; 
   }
 }
@@ -158,7 +163,7 @@ app.post("/verify-payment", async (req, res) => {
 
     const booking = { name, email, startTime, endTime };
 
-    // Background Tasks
+    // Run Background Tasks
     try {
       await createCalendarEvent(booking);
       console.log("✅ Calendar Updated.");
@@ -166,8 +171,8 @@ app.post("/verify-payment", async (req, res) => {
 
     try {
       await sendEmails(booking);
-      console.log("✅ Emails Dispatched.");
-    } catch (e) { console.error("Email Route Error:", e.message); }
+      console.log("✅ Emails Sent.");
+    } catch (e) { console.error("Email Error:", e.message); }
 
     res.json({ message: "Booking process completed successfully" });
 
@@ -177,7 +182,7 @@ app.post("/verify-payment", async (req, res) => {
   }
 });
 
-// TEST ROUTE: Visit https://your-app.onrender.com/test-email to check logs
+// TEST ROUTE: Visit https://meritrix-backend.onrender.com/test-email
 app.get("/test-email", async (req, res) => {
   try {
     const testBooking = {
@@ -186,7 +191,7 @@ app.get("/test-email", async (req, res) => {
       startTime: "March 7th, 2026 at 10:00 AM",
     };
     await sendEmails(testBooking);
-    res.json({ status: "Success", message: "Test emails sent via AhaSend!" });
+    res.json({ status: "Success", message: "v2 Test email sent via AhaSend!" });
   } catch (error) {
     res.status(500).json({ 
       status: "Error", 
