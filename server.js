@@ -44,67 +44,48 @@ async function createCalendarEvent(booking) {
 }
 
 /* ================= EMAIL SETUP (AHASEND v2 API) ================= */
-
 async function sendEmails(booking) {
   try {
-    console.log(`--- Initiating AhaSend v2 (Messages) for: ${booking.email} ---`);
-
     const senderEmail = 'bookings@meritrixglobal.com';
-    
-    // IMPORTANT: Get your Account ID from the Dashboard URL or Settings
     const accountId = process.env.AHASEND_ACCOUNT_ID; 
     const apiUrl = `https://api.ahasend.com/v2/accounts/${accountId}/messages`;
 
-    const emailData = {
-      from: {
-        email: senderEmail,
-        name: "Meritrix Global"
-      },
-      // Note: v2 uses "recipients" array instead of "to"
-      recipients: [
-        {
-          email: booking.email,
-          name: booking.name
-        }
-      ],
-      subject: "Booking Confirmation - Meritrix Global",
-      html_content: `
-        <div style="font-family: sans-serif; line-height: 1.6; color: #333;">
-          <h2 style="color: #2c3e50;">Your booking is confirmed 🎉</h2>
-          <p>Hello <strong>${booking.name}</strong>,</p>
-          <p>Your consultation has been successfully scheduled.</p>
-          <p><strong>Time:</strong> ${booking.startTime} (WAT)</p>
-          <hr style="border: 0; border-top: 1px solid #eee;" />
-          <p>We look forward to speaking with you.</p>
-        </div>
-      `
-    };
-
     // 1. Send to Client
-    await axios.post(apiUrl, emailData, {
-      headers: {
-        // v2 uses Bearer Auth, not X-API-KEY
-        "Authorization": `Bearer ${process.env.AHASEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-    });
-    console.log("✅ AhaSend v2: Client email sent.");
-
-    // 2. Send to Admin
+    console.log(`--- Dispatching Client Email: ${booking.email} ---`);
     await axios.post(apiUrl, {
-      ...emailData,
-      recipients: [{ email: process.env.ADMIN_EMAIL, name: "Victoria Olanipekun" }],
-      subject: "New Booking Received"
+      from: { email: senderEmail, name: "Meritrix Global" },
+      recipients: [{ email: booking.email, name: booking.name }],
+      subject: "Booking Confirmation - Meritrix Global",
+      html_content: `<p>Hello ${booking.name}, your booking for ${booking.startTime} is confirmed.</p>`
     }, {
-      headers: {
+      headers: { 
         "Authorization": `Bearer ${process.env.AHASEND_API_KEY}`,
-        "Content-Type": "application/json",
+        "Content-Type": "application/json" 
       },
     });
-    console.log("✅ AhaSend v2: Admin alert sent.");
+    console.log("✅ Client email accepted by AhaSend.");
+
+    // 2. Wait 2 seconds (Prevents rate-limit/spam flagging)
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // 3. Send to Admin
+    console.log(`--- Dispatching Admin Alert: ${process.env.ADMIN_EMAIL} ---`);
+    await axios.post(apiUrl, {
+      from: { email: senderEmail, name: "System Alert" },
+      recipients: [{ email: process.env.ADMIN_EMAIL, name: "Victoria Olanipekun" }],
+      subject: "New Booking Received",
+      html_content: `<p>New booking from ${booking.name} for ${booking.startTime}.</p>`
+    }, {
+      headers: { 
+        "Authorization": `Bearer ${process.env.AHASEND_API_KEY}`,
+        "Content-Type": "application/json" 
+      },
+    });
+    console.log("✅ Admin alert accepted by AhaSend.");
 
   } catch (error) {
-    console.error("❌ AhaSend v2 Error:", error.response?.data || error.message);
+    // This will log the EXACT error (e.g., 401 Unauthorized, 400 Bad Request)
+    console.error("❌ AhaSend v2 Error Details:", error.response?.data || error.message);
     throw error; 
   }
 }
