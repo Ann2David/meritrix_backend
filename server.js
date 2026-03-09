@@ -2,100 +2,12 @@ require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
-const { google } = require("googleapis");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const PORT = process.env.PORT || 5000;
-
-/* ================= GOOGLE CALENDAR SETUP ================= */
-let keys;
-try {
-  if (process.env.NODE_ENV === "production") {
-    keys = require("./google-key.json");
-  } else {
-    keys = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
-  }
-} catch (error) {
-  console.error("Failed to load Google Keys:", error.message);
-}
-
-const auth = new google.auth.GoogleAuth({
-  credentials: keys,
-  scopes: ["https://www.googleapis.com/auth/calendar"],
-});
-
-const calendar = google.calendar({ version: "v3" });
-
-async function createCalendarEvent(booking) {
-  const client = await auth.getClient();
-  await calendar.events.insert({
-    auth: client,
-    calendarId: process.env.ADMIN_EMAIL,
-    requestBody: {
-      summary: `Consultation with ${booking.name}`,
-      description: `Client Name: ${booking.name}\nClient Email: ${booking.email}`, 
-      start: { dateTime: booking.startTime, timeZone: "Africa/Lagos" },
-      end: { dateTime: booking.endTime, timeZone: "Africa/Lagos" },
-    },
-  });
-}
-
-/* ================= EMAIL SETUP (AHASEND v2 API) ================= */
-async function sendEmails(booking) {
-  try {
-    const senderEmail = 'bookings@meritrixglobal.com'; // Updated to match your verified dashboard
-    const accountId = process.env.AHASEND_ACCOUNT_ID; 
-    const apiUrl = `https://api.ahasend.com/v2/accounts/${accountId}/messages`;
-
-    const headers = { 
-      "Authorization": `Bearer ${process.env.AHASEND_API_KEY}`,
-      "Content-Type": "application/json" 
-    };
-
-    // 1. Client Email
-    console.log(`--- Dispatching Client Email: ${booking.email} ---`);
-    await axios.post(apiUrl, {
-      from: { email: senderEmail, name: "Meritrix Global" },
-      recipients: [{ email: booking.email, name: booking.name }],
-      subject: "Booking Confirmation - Meritrix Global",
-      html_content: `<p>Hello ${booking.name}, your booking is confirmed.</p>`
-    }, { headers });
-    console.log("✅ Client email accepted.");
-
-    // 2. Short Delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    // 3. Admin Email
-    console.log(`--- Dispatching Admin Alert ---`);
-    const adminRes = await axios.post(apiUrl, {
-      from: { email: senderEmail, name: "System Alert" },
-      recipients: [{ email: process.env.ADMIN_EMAIL, name: "Victoria Olanipekun" }],
-      subject: "New Booking Received",
-      html_content: `<p>New booking from ${booking.name}.</p>`
-    }, { headers });
-
-    // Confirm the response from AhaSend was a 201/200
-    if (adminRes.status >= 200 && adminRes.status < 300) {
-       console.log("✅ Admin alert successfully handed off.");
-    }
-
-    return true; // Explicitly return to signal completion
-
-  } catch (error) {
-    // This will catch the EXACT issue causing the red line
-    console.error("❌ ERROR IN DISPATCH:");
-    if (error.response) {
-      console.error("Data:", error.response.data);
-      console.error("Status:", error.response.status);
-    } else {
-      console.error(error.message);
-    }
-    throw error; 
-  }
-}
 
 /* ================= PAYMENT VERIFICATION ================= */
 
@@ -114,13 +26,14 @@ async function verifyFlutterwave(transaction_id) {
 }
 
 /* ================= ROUTES ================= */
+
 app.post("/verify-payment", async (req, res) => {
   console.log("--- Payment Verification Request ---");
   try {
     const { paymentProvider, reference, transaction_id, name, email, startTime, endTime } = req.body;
     let paymentVerified = false;
 
-    // 1. Verify Payment First
+    // 1. Verify Payment
     if (paymentProvider === "paystack") {
       paymentVerified = await verifyPaystack(reference);
     } else if (paymentProvider === "flutterwave") {
@@ -132,38 +45,35 @@ app.post("/verify-payment", async (req, res) => {
       return res.status(400).json({ message: "Payment not verified" });
     }
 
-    // 2. Prepare Booking Object with ISO Dates
-    // This ensures Google Calendar doesn't reject the format
-    const booking = { 
-      name, 
-      email, 
-      startTime: new Date(startTime).toISOString(), 
-      endTime: new Date(endTime).toISOString() 
-    };
-
-    // 3. Update Calendar (Do this BEFORE emails)
+    // 2. Trigger Zapier (The "All-in-One" Step)
+    // This replaces Google Calendar and AhaSend code
+    console.log("--- Sending Data to Zapier ---");
     try {
-      await createCalendarEvent(booking);
-      console.log("✅ Google Calendar event created.");
-    } catch (calendarError) {
-      // We log the error but DON'T stop the process so the user still gets their email
-      console.error("⚠️ Calendar Sync Failed:", calendarError.message);
+      await axios.post(process.env.ZAPIER_WEBHOOK_URL, {
+        customer_name: name,
+        customer_email: email,
+        start_time: startTime,
+        end_time: endTime,
+        provider: paymentProvider,
+        ref: reference || transaction_id
+      });
+      console.log("✅ Zapier received the booking data.");
+    } catch (zapierError) {
+      // We log the error but still tell the user "Success" because the money was paid
+      console.error("⚠️ Zapier Connection Issue:", zapierError.message);
     }
 
-    // 4. Send Confirmation Emails
-    await sendEmails(booking);
-    console.log("✅ Booking workflow finished.");
-
-    // 5. Respond to Frontend immediately to prevent retries
-    return res.status(200).json({ message: "Success" });
+    // 3. Final Response to Frontend
+    return res.status(200).json({ 
+        message: "Booking process completed successfully",
+        status: "success" 
+    });
 
   } catch (error) {
-    console.error("🚨 CRITICAL SYSTEM ERROR:", error.message);
+    console.error("🚨 SYSTEM ERROR:", error.message);
     return res.status(500).json({ message: "Internal Server Error" });
   }
 });
-
-
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
