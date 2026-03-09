@@ -87,6 +87,22 @@ app.post("/verify-payment", async (req, res) => {
   }
 });
 
+
+
+// Add this temporarily to server.js
+app.get("/test-resend", async (req, res) => {
+  try {
+    await sendEmails(
+      "Test User", 
+      "meritrixconsult@gmail.com", // Change this to your personal email to see the client view
+      "Monday, March 10th @ 4:00 PM"
+    );
+    res.send("Test emails sent! Check your inbox.");
+  } catch (error) {
+    res.status(500).send(error.message);
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
 });
