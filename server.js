@@ -45,34 +45,47 @@ app.post("/verify-payment", async (req, res) => {
       return res.status(400).json({ message: "Payment not verified" });
     }
 
-    // 2. Trigger Zapier (The "All-in-One" Step)
-    // This replaces Google Calendar and AhaSend code
-    console.log("--- Sending Data to Zapier ---");
+    // 2. Trigger Make.com Webhook
+    console.log("--- Sending Data to Make.com ---");
     try {
-      await axios.post(process.env.ZAPIER_WEBHOOK_URL, {
+      await axios.post(process.env.MAKE_WEBHOOK_URL, {
         customer_name: name,
         customer_email: email,
-        start_time: startTime,
-        end_time: endTime,
-        provider: paymentProvider,
-        ref: reference || transaction_id
+        start_time: startTime, // ISO format from frontend
+        end_time: endTime,     // ISO format from frontend
+        payment_method: paymentProvider,
+        transaction_ref: reference || transaction_id,
+        amount: (paymentProvider === "paystack") ? "Verified" : "Successful" 
       });
-      console.log("✅ Zapier received the booking data.");
-    } catch (zapierError) {
-      // We log the error but still tell the user "Success" because the money was paid
-      console.error("⚠️ Zapier Connection Issue:", zapierError.message);
+      console.log("✅ Make.com Scenario Triggered.");
+    } catch (makeError) {
+      console.error("⚠️ Make.com Webhook Error:", makeError.message);
     }
 
-    // 3. Final Response to Frontend
-    return res.status(200).json({ 
-        message: "Booking process completed successfully",
-        status: "success" 
-    });
+    // 3. Final Response
+    return res.status(200).json({ message: "Success" });
 
   } catch (error) {
     console.error("🚨 SYSTEM ERROR:", error.message);
     return res.status(500).json({ message: "Internal Server Error" });
   }
+});
+
+// TEST ROUTE for Make.com
+app.get("/test-make", async (req, res) => {
+    try {
+        await axios.post(process.env.MAKE_WEBHOOK_URL, {
+            customer_name: "Test Admin",
+            customer_email: "annapauladav@gmail.com",
+            start_time: new Date().toISOString(),
+            end_time: new Date(Date.now() + 3600000).toISOString(),
+            payment_method: "test",
+            transaction_ref: "TEST-REF-123"
+        });
+        res.json({ message: "Test sent! Check your Make.com scenario." });
+    } catch (e) {
+        res.status(500).send(e.message);
+    }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
