@@ -2,12 +2,41 @@ require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
+const { Resend } = require("resend");
 
 const app = express();
+const resend = new Resend(process.env.RESEND_API_KEY);
+
 app.use(cors());
 app.use(express.json());
 
 const PORT = process.env.PORT || 5000;
+
+/* ================= HELPERS ================= */
+
+async function sendEmails(name, email, startTime) {
+  try {
+    // 1. Send Confirmation to Client
+    await resend.emails.send({
+      from: 'Victoria <bookings@meritrixglobal.com>',
+      to: email,
+      subject: 'Booking Confirmed | Meritrix Global',
+      html: `<strong>Hi ${name},</strong><p>Your session for ${startTime} is confirmed. We look forward to meeting you!</p>`
+    });
+
+    // 2. Send Alert to Admin
+    await resend.emails.send({
+      from: 'System <bookings@meritrixglobal.com>',
+      to: 'meritrixconsult@gmail.com',
+      subject: `🚨 New Booking: ${name}`,
+      html: `<p>New booking received from ${name} (${email}) for ${startTime}.</p>`
+    });
+
+    console.log("✅ Resend: Both emails sent successfully.");
+  } catch (error) {
+    console.error("❌ Resend Error:", error.message);
+  }
+}
 
 /* ================= PAYMENT VERIFICATION ================= */
 
@@ -27,65 +56,35 @@ async function verifyFlutterwave(transaction_id) {
 
 /* ================= ROUTES ================= */
 
+
 app.post("/verify-payment", async (req, res) => {
-  console.log("--- Payment Verification Request ---");
+  const { paymentProvider, reference, transaction_id, name, email, startTime } = req.body;
+
   try {
-    const { paymentProvider, reference, transaction_id, name, email, startTime, endTime } = req.body;
     let paymentVerified = false;
 
-    // 1. Verify Payment
+    // Payment Verification Logic
     if (paymentProvider === "paystack") {
-      paymentVerified = await verifyPaystack(reference);
-    } else if (paymentProvider === "flutterwave") {
-      paymentVerified = await verifyFlutterwave(transaction_id);
-    }
-
-    if (!paymentVerified) {
-      console.log("❌ Payment not verified.");
-      return res.status(400).json({ message: "Payment not verified" });
-    }
-
-    // 2. Trigger Make.com Webhook
-    console.log("--- Sending Data to Make.com ---");
-    try {
-      await axios.post(process.env.MAKE_WEBHOOK_URL, {
-        customer_name: name,
-        customer_email: email,
-        start_time: startTime, // ISO format from frontend
-        end_time: endTime,     // ISO format from frontend
-        payment_method: paymentProvider,
-        transaction_ref: reference || transaction_id,
-        amount: (paymentProvider === "paystack") ? "Verified" : "Successful" 
+      const resp = await axios.get(`https://api.paystack.co/transaction/verify/${reference}`, {
+        headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }
       });
-      console.log("✅ Make.com Scenario Triggered.");
-    } catch (makeError) {
-      console.error("⚠️ Make.com Webhook Error:", makeError.message);
+      paymentVerified = resp.data.data.status === "success";
     }
 
-    // 3. Final Response
-    return res.status(200).json({ message: "Success" });
-
+    if (paymentVerified) {
+      console.log(`✅ Payment Verified for ${name}`);
+      
+      // Trigger Emails Directly
+      await sendEmails(name, email, startTime);
+      
+      return res.status(200).json({ message: "Payment verified and emails sent." });
+    } else {
+      return res.status(400).json({ message: "Payment verification failed." });
+    }
   } catch (error) {
-    console.error("🚨 SYSTEM ERROR:", error.message);
-    return res.status(500).json({ message: "Internal Server Error" });
+    console.error("🚨 System Error:", error.message);
+    res.status(500).json({ message: "Internal Server Error" });
   }
-});
-
-// TEST ROUTE for Make.com
-app.get("/test-make", async (req, res) => {
-    try {
-        await axios.post(process.env.MAKE_WEBHOOK_URL, {
-            customer_name: "Test Admin",
-            customer_email: "annapauladav@gmail.com",
-            start_time: new Date().toISOString(),
-            end_time: new Date(Date.now() + 3600000).toISOString(),
-            payment_method: "test",
-            transaction_ref: "TEST-REF-123"
-        });
-        res.json({ message: "Test sent! Check your Make.com scenario." });
-    } catch (e) {
-        res.status(500).send(e.message);
-    }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
