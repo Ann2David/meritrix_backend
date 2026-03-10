@@ -13,17 +13,20 @@ app.use(express.json());
 const PORT = process.env.PORT || 5000;
 
 /* ================= HELPERS ================= */
-
-async function sendEmails(name, email, startTime) {
+async function sendEmails(name, email, duration) {
   try {
-    const mainColor = "#000000"; 
-    const accentColor = "#6366f1"; 
+    const mainColor = "#000000";
+    
+    // Define your Calendly links here
+    const calendlyLink = duration === "60" 
+      ? "https://calendly.com/meritrixconsult/1-hour-deep-dive-consultation" 
+      : "https://calendly.com/meritrixconsult/30min";
 
-    // 1. CLIENT CONFIRMATION (Luxury Minimalist)
+    // 1. CLIENT CONFIRMATION (The Bridge to Calendly)
     await resend.emails.send({
       from: 'Victoria <bookings@meritrixglobal.com>',
       to: email,
-      subject: 'Booking Confirmed | Meritrix Global',
+      subject: 'Payment Received | Next Step: Schedule Your Session',
       html: `
         <div style="font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #ffffff; padding: 40px 0; color: #111111;">
           <div style="max-width: 550px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 24px; overflow: hidden;">
@@ -32,17 +35,15 @@ async function sendEmails(name, email, startTime) {
             </div>
             
             <div style="padding: 40px;">
-              <h2 style="font-size: 28px; font-weight: 600; margin-bottom: 24px; letter-spacing: -1px;">Your session is confirmed.</h2>
-              <p style="font-size: 16px; line-height: 1.6; color: #4b5563;">Hello ${name}, your strategy consultation is officially on the calendar. We look forward to our session.</p>
+              <h2 style="font-size: 28px; font-weight: 600; margin-bottom: 24px; letter-spacing: -1px;">Payment Confirmed.</h2>
+              <p style="font-size: 16px; line-height: 1.6; color: #4b5563;">Hello ${name}, thank you for booking a <strong>${duration}-minute</strong> strategy consultation.</p>
+              <p style="font-size: 16px; line-height: 1.6; color: #4b5563;">To finalize your booking, please click the button below to select a date and time that works best for you.</p>
               
-              <div style="background-color: #000000; border-radius: 16px; padding: 32px; margin: 32px 0; color: #ffffff; text-align: center;">
-                <p style="margin: 0; font-size: 12px; text-transform: uppercase; opacity: 0.6; letter-spacing: 1px;">Selected Date & Time</p>
-                <p style="margin: 12px 0 0; font-size: 20px; font-weight: 500;">${startTime}</p>
+              <div style="text-align: center; margin: 40px 0;">
+                <a href="${calendlyLink}" style="display: inline-block; background-color: #000000; color: #ffffff; padding: 20px 40px; border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 16px;">Schedule Your Session</a>
               </div>
 
-              <div style="text-align: center;">
-                <a href="https://meet.google.com/your-default-link" style="display: inline-block; background-color: #000000; color: #ffffff; padding: 18px 36px; border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 15px;">Join Strategy Session</a>
-              </div>
+              <p style="font-size: 13px; color: #9ca3af; text-align: center;">Once scheduled, you will receive a Google Meet invite automatically.</p>
             </div>
 
             <div style="padding: 30px; background-color: #fafafa; text-align: center;">
@@ -53,46 +54,28 @@ async function sendEmails(name, email, startTime) {
       `
     });
 
-    // 2. ADMIN NOTIFICATION (Functional & Sharp)
+    // 2. ADMIN NOTIFICATION (Keep you updated on the money)
     await resend.emails.send({
       from: 'Meritrix System <bookings@meritrixglobal.com>',
       to: 'meritrixconsult@gmail.com',
-      subject: `🚨 New Booking: ${name}`,
+      subject: `💰 New Payment: ${name} (${duration} mins)`,
       html: `
-        <div style="font-family: 'Inter', sans-serif; background-color: #f3f4f6; padding: 30px;">
+        <div style="font-family: sans-serif; background-color: #f3f4f6; padding: 30px;">
           <div style="max-width: 480px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; padding: 30px; border: 1px solid #d1d5db;">
-            <h3 style="margin-top: 0; color: #111827; font-size: 18px;">New Lead Acquired</h3>
-            <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-            
-            <table style="width: 100%; font-size: 14px; line-height: 2;">
-              <tr>
-                <td style="color: #6b7280; width: 100px;">Client:</td>
-                <td style="font-weight: 600; color: #111827;">${name}</td>
-              </tr>
-              <tr>
-                <td style="color: #6b7280;">Email:</td>
-                <td><a href="mailto:${email}" style="color: ${accentColor};">${email}</a></td>
-              </tr>
-              <tr>
-                <td style="color: #6b7280;">Time:</td>
-                <td style="font-weight: 600; color: #111827;">${startTime}</td>
-              </tr>
-            </table>
-
-            <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #9ca3af;">
-              This booking has been verified via Paystack and synced to your Google Calendar.
-            </div>
+            <h3 style="margin-top: 0; color: #111827;">Payment Verified</h3>
+            <p><strong>Client:</strong> ${name}</p>
+            <p><strong>Package:</strong> ${duration} Minute Session</p>
+            <p><strong>Next Step:</strong> Client has been sent the link to book their time on Calendly.</p>
           </div>
         </div>
       `
     });
 
-    console.log(`✅ Success: Confirmation sent to ${email} and Admin alert sent.`);
+    console.log(`✅ Success: Payment confirmation sent to ${email}`);
   } catch (error) {
     console.error("❌ Resend Error:", error.message);
   }
 }
-
 /* ================= PAYMENT VERIFICATION ================= */
 
 async function verifyPaystack(reference) {
@@ -111,33 +94,46 @@ async function verifyFlutterwave(transaction_id) {
 
 /* ================= ROUTES ================= */
 
-
 app.post("/verify-payment", async (req, res) => {
-  const { paymentProvider, reference, transaction_id, name, email, startTime } = req.body;
+  // We swapped startTime for duration
+  const { paymentProvider, reference, transaction_id, name, email, duration } = req.body;
 
   try {
     let paymentVerified = false;
 
-    // Payment Verification Logic
+    // 1. Paystack Verification
     if (paymentProvider === "paystack") {
       const resp = await axios.get(`https://api.paystack.co/transaction/verify/${reference}`, {
         headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }
       });
       paymentVerified = resp.data.data.status === "success";
+    } 
+    // 2. Flutterwave Verification
+    else if (paymentProvider === "flutterwave") {
+      const resp = await axios.get(`https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`, {
+        headers: { Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}` }
+      });
+      paymentVerified = resp.data.data.status === "successful";
     }
 
     if (paymentVerified) {
-      console.log(`✅ Payment Verified for ${name}`);
+      console.log(`✅ Payment Verified for ${name} (${duration} mins)`);
       
-      // Trigger Emails Directly
-      await sendEmails(name, email, startTime);
+      // Pass the duration to your updated sendEmails function
+      await sendEmails(name, email, duration);
       
-      return res.status(200).json({ message: "Payment verified and emails sent." });
+      return res.status(200).json({ 
+        message: "Payment verified and booking email sent.",
+        // Optional: Send the link back to the frontend for an immediate redirect
+        calendlyUrl: duration === "60" ? "YOUR_1HR_LINK" : "YOUR_30MIN_LINK"
+      });
     } else {
+      console.log(`❌ Verification failed for ${name}`);
       return res.status(400).json({ message: "Payment verification failed." });
     }
   } catch (error) {
-    console.error("🚨 System Error:", error.message);
+    // Detailed error logging to help you catch 401s or API issues
+    console.error("🚨 System Error:", error.response?.data || error.message);
     res.status(500).json({ message: "Internal Server Error" });
   }
 });
