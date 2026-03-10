@@ -125,7 +125,7 @@ app.post("/verify-payment", async (req, res) => {
       return res.status(200).json({ 
         message: "Payment verified and booking email sent.",
         // Optional: Send the link back to the frontend for an immediate redirect
-        calendlyUrl: duration === "60" ? "YOUR_1HR_LINK" : "YOUR_30MIN_LINK"
+        calendlyUrl: duration === "60" ? "https://calendly.com/meritrixconsult/1-hour-deep-dive-consultation" : "https://calendly.com/meritrixconsult/30min"
       });
     } else {
       console.log(`❌ Verification failed for ${name}`);
