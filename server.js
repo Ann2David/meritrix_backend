@@ -14,32 +14,38 @@ const PORT = process.env.PORT || 5000;
 
 /* ================= HELPERS ================= */
 async function sendEmails(name, email, duration) {
+  // 1. Create a meeting in Google Calendar for a future date (e.g., 2027) 
+  // 2. Copy the "meet.google.com/xxx-xxxx-xxx" link and paste it here:
+  const permanentMeetLink = "https://meet.google.com/hhf-sjns-gwy"; 
+
   try {
     const finalDuration = duration || "60"; 
 
-    // 1. CLIENT RECEIPT
     await resend.emails.send({
       from: 'Victoria <bookings@meritrixglobal.com>',
       to: email,
-      subject: 'Payment Confirmed | Meritrix Global',
+      subject: 'Payment Confirmed | Your Meeting Link',
       html: `
         <div style="font-family: sans-serif; background-color: #000; padding: 40px; color: #fff; text-align: center;">
-          <div style="max-width: 500px; margin: 0 auto; background: #111; border: 1px solid #333; padding: 40px; border-radius: 24px;">
+          <div style="max-width: 500px; margin: 0 auto; background: #111; border: 1px solid #333; padding: 40px; border-radius: 24px; border-bottom: 4px solid #ff8811;">
             <h1 style="font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: #888; margin-bottom: 20px;">Meritrix Global</h1>
-            <h2 style="font-size: 26px; font-weight: 600; margin-bottom: 20px;">Verification Successful</h2>
+            <h2 style="font-size: 26px; font-weight: 600; margin-bottom: 20px;">Booking Confirmed</h2>
             
-            <p style="color: #ccc; font-size: 16px; line-height: 1.6;">Hello ${name}, your payment for the <strong>${finalDuration}-minute Strategy Session</strong> has been verified.</p>
+            <p style="color: #ccc; font-size: 16px; line-height: 1.6;">Hello ${name}, your <strong>${finalDuration}-minute session</strong> is verified.</p>
             
-            <div style="background-color: #1a1a1a; border-radius: 12px; padding: 20px; margin: 30px 0; border: 1px dashed #444;">
-               <p style="margin: 0; color: #fff; font-weight: 600;">Check Your Inbox</p>
-               <p style="margin: 10px 0 0; color: #aaa; font-size: 14px;">A separate calendar invitation containing your <strong>Google Meet link</strong> has been sent to this email address via Calendly.</p>
+            <div style="background-color: #1a1a1a; border-radius: 12px; padding: 30px; margin: 30px 0; border: 1px solid #333;">
+               <p style="margin: 0 0 15px; color: #fff; font-weight: 600; font-size: 16px;">Your Google Meet Link</p>
+               <a href="${permanentMeetLink}" style="background-color: #ff8811; color: #000; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block; font-size: 16px;">Join Meeting Room</a>
+               <p style="margin: 15px 0 0; color: #666; font-size: 12px;">Link: ${permanentMeetLink}</p>
             </div>
 
-            <p style="font-size: 13px; color: #666;">Need to reschedule? You can do so directly through the "Reschedule" link found at the bottom of your calendar invite.</p>
+            <p style="font-size: 13px; color: #666; line-height: 1.5;">Please check your calendar for the automatic invite. A reminder will be sent to you 24 hours before we begin.</p>
           </div>
         </div>
       `
     });
+    // ... admin notification logic remains the same
+ 
 
     // 2. ADMIN NOTIFICATION
     await resend.emails.send({
