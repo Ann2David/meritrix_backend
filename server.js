@@ -15,38 +15,40 @@ const PORT = process.env.PORT || 5000;
 /* ================= HELPERS ================= */
 async function sendEmails(name, email, duration) {
   try {
-    const finalDuration = duration || "Consultation"; 
-    // Since they already picked their time, we change the wording from "Schedule" to "Confirmation"
-    
-    // 1. CLIENT RECEIPT (Premium Dark Mode)
+    const finalDuration = duration || "60"; 
+
+    // 1. CLIENT RECEIPT
     await resend.emails.send({
       from: 'Victoria <bookings@meritrixglobal.com>',
       to: email,
-      subject: 'Booking Confirmed | Meritrix Global',
+      subject: 'Payment Confirmed | Meritrix Global',
       html: `
         <div style="font-family: sans-serif; background-color: #000; padding: 40px; color: #fff; text-align: center;">
-          <div style="max-width: 500px; margin: 0 auto; background: #111; border: 1px solid #333; padding: 40px; border-radius: 20px;">
-            <h1 style="font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: #888;">Meritrix Global</h1>
-            <h2 style="font-size: 24px; margin: 20px 0;">Payment Verified.</h2>
-            <p style="color: #ccc; line-height: 1.6;">Hello ${name}, your <strong>${finalDuration}-minute</strong> session has been successfully booked.</p>
-            <p style="color: #ccc; line-height: 1.6;">Since you've already selected your slot, please check your inbox for a separate calendar invite containing the Google Meet link.</p>
-            <div style="margin-top: 30px; padding: 20px; border-top: 1px solid #222;">
-               <p style="font-size: 12px; color: #666;">If you need to reschedule, please refer to the link in the original Calendly email.</p>
+          <div style="max-width: 500px; margin: 0 auto; background: #111; border: 1px solid #333; padding: 40px; border-radius: 24px;">
+            <h1 style="font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: #888; margin-bottom: 20px;">Meritrix Global</h1>
+            <h2 style="font-size: 26px; font-weight: 600; margin-bottom: 20px;">Verification Successful</h2>
+            
+            <p style="color: #ccc; font-size: 16px; line-height: 1.6;">Hello ${name}, your payment for the <strong>${finalDuration}-minute Strategy Session</strong> has been verified.</p>
+            
+            <div style="background-color: #1a1a1a; border-radius: 12px; padding: 20px; margin: 30px 0; border: 1px dashed #444;">
+               <p style="margin: 0; color: #fff; font-weight: 600;">Check Your Inbox</p>
+               <p style="margin: 10px 0 0; color: #aaa; font-size: 14px;">A separate calendar invitation containing your <strong>Google Meet link</strong> has been sent to this email address via Calendly.</p>
             </div>
+
+            <p style="font-size: 13px; color: #666;">Need to reschedule? You can do so directly through the "Reschedule" link found at the bottom of your calendar invite.</p>
           </div>
         </div>
       `
     });
 
-    // 2. ADMIN ALERT (To your Gmail)
+    // 2. ADMIN NOTIFICATION
     await resend.emails.send({
       from: 'System <bookings@meritrixglobal.com>',
       to: 'meritrixconsult@gmail.com',
-      subject: `💰 Payment Success: ${name}`,
-      html: `<p><strong>${name}</strong> has just paid for a <strong>${finalDuration} min</strong> session via the website.</p>`
+      subject: `💰 Payment Verified: ${name}`,
+      html: `<p>Payment of <strong>${finalDuration} mins</strong> confirmed for <strong>${name}</strong> (${email}). Meeting link has been dispatched via Calendly.</p>`
     });
 
-    console.log(`✅ Confirmation sent to ${email}`);
   } catch (error) {
     console.error("❌ Resend Error:", error.message);
   }
