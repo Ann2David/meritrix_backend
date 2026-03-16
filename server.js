@@ -13,57 +13,47 @@ app.use(express.json());
 const PORT = process.env.PORT || 5000;
 
 /* ================= HELPERS ================= */
-async function sendEmails(name, email, duration) {
-  // Use your permanent Google Meet link as a backup/direct access
-  const permanentMeetLink = "https://meet.google.com/hhf-sjns-gwy"; 
+ async function sendEmails(name, email, duration) {
   const isOneHour = duration === "60" || duration === 60;
 
   try {
-    // 1. CLIENT CONFIRMATION EMAIL (The Luxury Black Receipt)
     await resend.emails.send({
       from: 'Victoria <bookings@meritrixglobal.com>',
       to: email,
-      subject: 'Booking Confirmed | Meritrix Global',
+      subject: 'Session Activated | Meritrix Global',
       html: `
         <div style="font-family: sans-serif; background-color: #000; padding: 40px; color: #fff; text-align: center;">
           <div style="max-width: 500px; margin: 0 auto; background: #111; border: 1px solid #333; padding: 40px; border-radius: 24px; border-bottom: 4px solid #ff8811;">
             <h1 style="font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: #888; margin-bottom: 20px;">Meritrix Global</h1>
             <h2 style="font-size: 26px; font-weight: 600; margin-bottom: 20px;">Payment Verified</h2>
             
-            <p style="color: #ccc; font-size: 16px; line-height: 1.6;">Hello ${name}, your <strong>${duration}-minute session</strong> is now fully secured.</p>
+            <p style="color: #ccc; font-size: 16px; line-height: 1.6;">Hello ${name}, your payment for the <strong>${duration}-minute session</strong> has been received.</p>
             
-            <div style="background-color: #1a1a1a; border-radius: 12px; padding: 30px; margin: 30px 0; border: 1px solid #333;">
-               <p style="margin: 0 0 15px; color: #fff; font-weight: 600; font-size: 16px;">Access Your Meeting Room</p>
-               <a href="${permanentMeetLink}" style="background-color: #ff8811; color: #000; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block; font-size: 16px;">JOIN GOOGLE MEET</a>
+            <div style="background-color: #1a1a1a; border-radius: 12px; padding: 25px; margin: 30px 0; border: 1px solid #333; text-align: left;">
+               <p style="margin: 0; color: #fff; font-weight: 600;">How to join:</p>
+               <p style="color: #aaa; font-size: 14px; margin-top: 10px;">
+                1. Open the <strong>Google Calendar invitation</strong> sent to your inbox.<br>
+                2. Click the <strong>"Join with Google Meet"</strong> button inside that invite.<br>
+                3. We will start exactly at the scheduled time.
+               </p>
             </div>
 
             ${isOneHour ? `
-            <div style="background: #222; padding: 15px; border-radius: 10px; border-left: 4px solid #ff8811; margin-bottom: 20px; text-align: left;">
-                <p style="margin: 0; color: #ff8811; font-weight: bold; font-size: 14px;">NOTE FOR 1-HOUR SESSION:</p>
-                <p style="margin: 5px 0 0; color: #aaa; font-size: 12px;">Your calendar invite may initially show 30 minutes. Don't worry—your full 1-hour deep dive is confirmed on our end.</p>
-            </div>
+            <p style="font-size: 12px; color: #ff8811; margin-bottom: 20px;">Note: I have manually updated your 1-hour session on the calendar.</p>
             ` : ''}
 
-            <p style="font-size: 13px; color: #666; line-height: 1.5;">You will receive an automatic Google Calendar invite shortly. A reminder will be sent 24 hours before we begin.</p>
+            <p style="font-size: 11px; color: #555;">If you cannot find the Google Calendar invite, please check your Spam folder.</p>
           </div>
         </div>
       `
     });
 
-    // 2. ADMIN NOTIFICATION (So you know to check the calendar)
+    // ADMIN NOTIFICATION
     await resend.emails.send({
       from: 'System <bookings@meritrixglobal.com>',
       to: 'meritrixconsult@gmail.com',
-      subject: `💰 Payment Verified: ${name} (${duration} mins)`,
-      html: `
-        <div style="font-family: sans-serif; padding: 20px;">
-          <h3>New Confirmed Booking</h3>
-          <p><strong>Client:</strong> ${name}</p>
-          <p><strong>Email:</strong> ${email}</p>
-          <p><strong>Duration:</strong> ${duration} Minutes</p>
-          <p><strong>Action Required:</strong> ${isOneHour ? "⚠️ Please open Google Calendar and extend this 30-min booking to 1 hour." : "None (Standard 30-min slot)."}</p>
-        </div>
-      `
+      subject: `✅ PAID: ${name} (${duration} mins)`,
+      html: `<p>User <strong>${name}</strong> has paid. Match this with the Google Calendar notification you just received. ${isOneHour ? "<strong>REMINDER: Extend the meeting to 1 hour.</strong>" : ""}</p>`
     });
 
   } catch (error) {
