@@ -175,7 +175,10 @@ app.post("/verify-payment", async (req, res) => {
 
 
 
-
+app.get("/", (req, res) => {
+  console.log("🌍 Someone just visited the home page!");
+  res.send("Meritrix Backend is ALIVE");
+});
 
 
 
