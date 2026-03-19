@@ -93,38 +93,56 @@ async function sendEmails(name, email, duration) {
   }
 }
 
-/* ================= ROUTES ================= */
+/* ================= GOOGLE CALENDAR DELETE FUNCTION ================= */
+async function deleteCalendarEvent(eventId) {
+    console.log(`📡 Attempting to delete event: ${eventId}`);
+    try {
+        await calendar.events.delete({
+            // Ensure this is your actual email, not 'primary'
+            calendarId: 'meritrixconsult@gmail.com', 
+            eventId: eventId,
+            sendUpdates: 'all', 
+        });
+        console.log(`✅ SUCCESS: Unpaid booking deleted: ${eventId}`);
+    } catch (error) {
+        console.error("❌ GOOGLE API ERROR:", error.message);
+        if (error.message.includes("403")) {
+            console.error("👉 FIX: You must share the calendar with your Service Account email and give 'Make changes to events' permission.");
+        }
+    }
+}
 
-/**
- * STEP 2.5: Reservation Route
- * Call this from the frontend as soon as the user enters their email 
- * after picking a time in the Google Calendar iframe.
- */
- app.post("/reserve-slot", (req, res) => {
-    // DIAGNOSTIC LOG: This will show up even if the data is messy
-    console.log("------------------------------------");
-    console.log("📩 HIT DETECTED ON /reserve-slot");
-    console.log("📦 BODY RECEIVED:", JSON.stringify(req.body));
-    console.log("------------------------------------");
-
+/* ================= UPDATED RESERVE ROUTE (5 MINS) ================= */
+app.post("/reserve-slot", (req, res) => {
     const { googleEventId, email } = req.body;
     
-    if (!googleEventId) {
-        console.log("⚠️ Refused: Missing googleEventId");
-        return res.status(400).json({ error: "Missing event ID" });
-    }
+    if (!googleEventId) return res.status(400).json({ error: "Missing event ID" });
 
-    // Rest of your logic...
+    console.log(`⏱️ TIMER START: 5-minute countdown for ${email} (${googleEventId})`);
 
-    // SET THE 15-MINUTE TIMER (900,000 ms)
+    // Track the booking
+    pendingBookings[googleEventId] = { 
+        email, 
+        paid: false, 
+        createdAt: Date.now() 
+    };
+
+    // SET THE 5-MINUTE TIMER (300,000 ms)
     setTimeout(() => {
-        if (pendingBookings[googleEventId] && !pendingBookings[googleEventId].paid) {
-            deleteCalendarEvent(googleEventId);
-            delete pendingBookings[googleEventId];
-        }
-    }, 900000); 
+        console.log(`⏳ 5 minutes up. Checking payment for: ${googleEventId}`);
 
-    res.json({ success: true, message: "15-minute timer started." });
+        if (pendingBookings[googleEventId] && !pendingBookings[googleEventId].paid) {
+            console.log(`🚫 Payment NOT verified. Proceeding to delete...`);
+            deleteCalendarEvent(googleEventId);
+        } else {
+            console.log(`✨ Payment was verified! Keeping the booking.`);
+        }
+        
+        // Clean up memory
+        delete pendingBookings[googleEventId];
+    }, 300000); 
+
+    res.json({ success: true, message: "5-minute timer started." });
 });
 
 /**
@@ -174,11 +192,6 @@ app.post("/verify-payment", async (req, res) => {
 });
 
 
-
-app.get("/", (req, res) => {
-  console.log("🌍 Someone just visited the home page!");
-  res.send("Meritrix Backend is ALIVE");
-});
 
 
 
