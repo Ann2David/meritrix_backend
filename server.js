@@ -94,24 +94,24 @@ async function sendEmails(name, email, duration) {
 }
 
 /* ================= GOOGLE CALENDAR DELETE FUNCTION ================= */
- async function deleteCalendarEvent(eventId) {
-    console.log(`📡 Attempting to delete event: ${eventId}`);
-    try {
-        // We must be 100% sure we are targeting your main email calendar
-        const targetCalendarId = 'meritrixconsult@gmail.com'; 
+  async function deleteCalendarEvent(googleEventId) {
+    // 1. CLEAN THE ID: Remove "@google.com" if it exists
+    const cleanEventId = googleEventId.split('@')[0];
+    
+    console.log(`📡 Attempting to delete cleaned event ID: ${cleanEventId}`);
 
+    try {
         await calendar.events.delete({
-            calendarId: targetCalendarId, 
-            eventId: eventId,
+            calendarId: 'meritrixconsult@gmail.com', 
+            eventId: cleanEventId, // Use the cleaned ID here
             sendUpdates: 'all', 
         });
-        console.log(`✅ SUCCESS: Unpaid booking deleted from ${targetCalendarId}`);
+        console.log(`✅ SUCCESS: Unpaid booking deleted: ${cleanEventId}`);
     } catch (error) {
         console.error("❌ GOOGLE API ERROR:", error.message);
         
-        // Detailed debugging for you:
         if (error.message.includes("Not Found")) {
-            console.error("👉 Check: Is the event ID correct? Is the Service Account added to the 'meritrixconsult' calendar sharing settings?");
+            console.error("👉 Check: Ensure the Service Account is added to the 'meritrixconsult' calendar sharing settings with 'Make changes to events' permission.");
         }
     }
 }
