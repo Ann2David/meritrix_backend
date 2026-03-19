@@ -3,6 +3,7 @@ const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
 const { Resend } = require("resend");
+const { google } = require('googleapis');
 
 const app = express();
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -12,8 +13,36 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 5000;
 
+// Memory store to track if a booking has been paid. 
+// eventId is the key.
+let pendingBookings = {};
+
+/* ================= GOOGLE CALENDAR CONFIG ================= */
+const auth = new google.auth.GoogleAuth({
+  keyFile: 'service-account.json', 
+  scopes: ['https://www.googleapis.com/auth/calendar.events'],
+});
+const calendar = google.calendar({ version: 'v3', auth });
+
+/**
+ * Automatically deletes an event if payment isn't confirmed
+ */
+async function deleteCalendarEvent(eventId) {
+    try {
+        await calendar.events.delete({
+            calendarId: 'primary', 
+            eventId: eventId,
+            sendUpdates: 'all', // Notifies the user their "reservation" was cancelled
+        });
+        console.log(`🗑️ Unpaid booking deleted: ${eventId}`);
+    } catch (error) {
+        console.error("❌ Google Delete Error:", error.message);
+    }
+}
+
 /* ================= HELPERS ================= */
- async function sendEmails(name, email, duration) {
+
+async function sendEmails(name, email, duration) {
   const isOneHour = duration === "60" || duration === 60;
 
   try {
@@ -61,21 +90,53 @@ const PORT = process.env.PORT || 5000;
   }
 }
 
-/* ... verification functions (verifyPaystack, verifyFlutterwave) stay exactly the same ... */
-
 /* ================= ROUTES ================= */
+
+/**
+ * STEP 2.5: Reservation Route
+ * Call this from the frontend as soon as the user enters their email 
+ * after picking a time in the Google Calendar iframe.
+ */
+app.post("/reserve-slot", (req, res) => {
+    const { googleEventId, email } = req.body;
+    
+    if (!googleEventId) return res.status(400).json({ error: "Missing event ID" });
+
+    // Track the booking
+    pendingBookings[googleEventId] = { 
+        email, 
+        paid: false, 
+        createdAt: Date.now() 
+    };
+
+    // SET THE 15-MINUTE TIMER (900,000 ms)
+    setTimeout(() => {
+        if (pendingBookings[googleEventId] && !pendingBookings[googleEventId].paid) {
+            deleteCalendarEvent(googleEventId);
+            delete pendingBookings[googleEventId];
+        }
+    }, 900000); 
+
+    res.json({ success: true, message: "15-minute timer started." });
+});
+
+/**
+ * STEP 3: Verification & Activation
+ */
 app.post("/verify-payment", async (req, res) => {
-  const { paymentProvider, reference, transaction_id, name, email, duration } = req.body;
+  const { paymentProvider, reference, transaction_id, name, email, duration, googleEventId } = req.body;
 
   try {
     let paymentVerified = false;
 
+    // PAYSTACK
     if (paymentProvider === "paystack") {
       const resp = await axios.get(`https://api.paystack.co/transaction/verify/${reference}`, {
         headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }
       });
       paymentVerified = resp.data.data.status === "success";
     } 
+    // FLUTTERWAVE
     else if (paymentProvider === "flutterwave") {
       const resp = await axios.get(`https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`, {
         headers: { Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}` }
@@ -84,7 +145,11 @@ app.post("/verify-payment", async (req, res) => {
     }
 
     if (paymentVerified) {
-      // Trigger emails with the duration passed from frontend
+      // STOP THE TIMER: Mark as paid so the background process ignores it
+      if (googleEventId && pendingBookings[googleEventId]) {
+          pendingBookings[googleEventId].paid = true;
+      }
+
       await sendEmails(name, email, duration);
       
       return res.status(200).json({ 
