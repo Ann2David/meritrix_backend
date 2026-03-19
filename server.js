@@ -17,9 +17,12 @@ const PORT = process.env.PORT || 5000;
 // eventId is the key.
 let pendingBookings = {};
 
+const path = require('path'); // Add this at the top of server.js
+
 /* ================= GOOGLE CALENDAR CONFIG ================= */
 const auth = new google.auth.GoogleAuth({
-  keyFile: 'service-account.json', 
+  // This creates an absolute path to the file in your root folder
+  keyFile: path.join(__dirname, 'service-account.json'), 
   scopes: ['https://www.googleapis.com/auth/calendar.events'],
 });
 const calendar = google.calendar({ version: 'v3', auth });
@@ -165,6 +168,25 @@ app.post("/verify-payment", async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 });
+
+
+
+
+const fs = require('fs');
+const testPath = path.join(__dirname, 'service-account.json');
+
+console.log("📂 Checking for service account at:", testPath);
+
+if (fs.existsSync(testPath)) {
+    console.log("✅ SUCCESS: File found!");
+} else {
+    console.log("❌ ERROR: File still missing from this directory.");
+    // List files in the directory to debug
+    console.log("Current directory files:", fs.readdirSync(__dirname));
+}
+
+
+
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
