@@ -100,17 +100,21 @@ async function sendEmails(name, email, duration) {
  * Call this from the frontend as soon as the user enters their email 
  * after picking a time in the Google Calendar iframe.
  */
-app.post("/reserve-slot", (req, res) => {
+ app.post("/reserve-slot", (req, res) => {
+    // DIAGNOSTIC LOG: This will show up even if the data is messy
+    console.log("------------------------------------");
+    console.log("📩 HIT DETECTED ON /reserve-slot");
+    console.log("📦 BODY RECEIVED:", JSON.stringify(req.body));
+    console.log("------------------------------------");
+
     const { googleEventId, email } = req.body;
     
-    if (!googleEventId) return res.status(400).json({ error: "Missing event ID" });
+    if (!googleEventId) {
+        console.log("⚠️ Refused: Missing googleEventId");
+        return res.status(400).json({ error: "Missing event ID" });
+    }
 
-    // Track the booking
-    pendingBookings[googleEventId] = { 
-        email, 
-        paid: false, 
-        createdAt: Date.now() 
-    };
+    // Rest of your logic...
 
     // SET THE 15-MINUTE TIMER (900,000 ms)
     setTimeout(() => {
@@ -171,19 +175,6 @@ app.post("/verify-payment", async (req, res) => {
 
 
 
-
-const fs = require('fs');
-const testPath = path.join(__dirname, 'service-account.json');
-
-console.log("📂 Checking for service account at:", testPath);
-
-if (fs.existsSync(testPath)) {
-    console.log("✅ SUCCESS: File found!");
-} else {
-    console.log("❌ ERROR: File still missing from this directory.");
-    // List files in the directory to debug
-    console.log("Current directory files:", fs.readdirSync(__dirname));
-}
 
 
 
