@@ -24,6 +24,8 @@ const calendar = google.calendar({ version: 'v3', auth });
 /* ================= NEW: CREATE CALENDAR EVENT FUNCTION ================= */
 async function createCalendarEvent(name, email, appointmentString, duration) {
     try {
+        console.log(`[PROCESS] Creating event for: ${appointmentString}`);
+
         const parts = appointmentString.split(' at ');
         const datePart = parts[0];
         const [time, modifier] = parts[1].split(' ');
@@ -45,13 +47,13 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
 
         const event = {
             summary: `Strategy Session: ${name}`,
-            description: `Client: ${email}\nDuration: ${duration} mins.\n\nNote: Please manually ensure the client is invited if they don't see the link.`,
+            description: `Client: ${email}\nDuration: ${duration} mins.`,
             start: { dateTime: isoStart, timeZone: 'Africa/Lagos' },
             end: { dateTime: isoEnd, timeZone: 'Africa/Lagos' },
             conferenceData: {
                 createRequest: { 
                     requestId: `mtx-${Date.now()}`, 
-                    conferenceSolutionKey: { type: 'hangoutsMeet' } // Exact ID required
+                    conferenceSolutionKey: { type: 'hangoutsMeet' } 
                 }
             },
         };
@@ -59,27 +61,34 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
         const response = await calendar.events.insert({
             calendarId: 'meritrixconsult@gmail.com',
             resource: event,
-            conferenceDataVersion: 1,
+            conferenceDataVersion: 1, // Crucial for Meet link generation
         });
 
-        // Safe extraction of the Meet Link
-        const conf = response.data.conferenceData;
-        const meetLink = conf && conf.entryPoints ? conf.entryPoints[0].uri : null;
-        
-        console.log("✅ Calendar Event Created. Meet Link:", meetLink);
-        return meetLink;
+        // Extra careful check for the meet link
+        let meetLink = null;
+        if (response.data.conferenceData && response.data.conferenceData.entryPoints) {
+            meetLink = response.data.conferenceData.entryPoints[0].uri;
+        }
+
+        console.log("✅ Calendar Event Created. Link:", meetLink || "No link generated");
+        return meetLink || "https://meet.google.com/lookup/meritrix"; // Fallback link
     } catch (error) {
         console.error("❌ Calendar Error:", error.message);
-        // We return a "Manual Link Needed" string so the email still sends
-        return "Will be sent manually by Victoria"; 
+        // RETURN A STRING INSTEAD OF THROWING ERROR
+        // This ensures the verify-payment route continues to send the email
+        return "Victoria will send your Google Meet link shortly."; 
     }
 }
 
-
 /* ================= HELPERS ================= */
 
-async function sendEmails(name, email, duration, meetingLink) {
+  async function sendEmails(name, email, duration, meetingLink) {
   try {
+    // Ensure meetingLink is a valid string and not null
+    const finalLink = meetingLink && meetingLink.startsWith('http') 
+                      ? meetingLink 
+                      : 'https://calendar.google.com';
+
     await resend.emails.send({
       from: 'Victoria <bookings@meritrixglobal.com>',
       to: email,
@@ -90,17 +99,21 @@ async function sendEmails(name, email, duration, meetingLink) {
             <h1 style="font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: #888; margin-bottom: 20px;">Meritrix Global</h1>
             <h2 style="font-size: 26px; font-weight: 600; margin-bottom: 20px;">Payment Verified</h2>
             <p style="color: #ccc; font-size: 16px; line-height: 1.6;">Hello ${name}, your <strong>${duration}-minute session</strong> is confirmed.</p>
+            
             <div style="background-color: #1a1a1a; border-radius: 12px; padding: 25px; margin: 30px 0; border: 1px solid #333; text-align: left;">
                <p style="margin: 0; color: #fff; font-weight: 600;">Your Meeting Access:</p>
                <p style="color: #aaa; font-size: 14px; margin-top: 10px;">
-                Check your Google Calendar for the invite or use the link below:<br>
-                <a href="${meetingLink}" style="color: #ff8811;">View Calendar Event</a>
+                Click the button below to join the session or view the event:
                </p>
+               <a href="${finalLink}" target="_blank" style="display: inline-block; background: #ff8811; color: #fff; text-decoration: none; padding: 12px 25px; border-radius: 8px; font-weight: bold; margin-top: 10px;">
+                Join Meeting / View Event
+               </a>
             </div>
           </div>
         </div>
       `
     });
+   
 
     // ADMIN NOTIFICATION
     await resend.emails.send({
@@ -110,6 +123,7 @@ async function sendEmails(name, email, duration, meetingLink) {
       html: `<p>User <strong>${name}</strong> has paid and booked a ${duration} min session.</p>`
     });
 
+   console.log("✅ Confirmation email sent to client.");
   } catch (error) {
     console.error("❌ Resend Error:", error.message);
   }
@@ -117,14 +131,14 @@ async function sendEmails(name, email, duration, meetingLink) {
 
 /* ================= VERIFY PAYMENT & CREATE EVENT ================= */
 
-
-// --- Updated Verify Route ---
 app.post("/verify-payment", async (req, res) => {
     const { paymentProvider, reference, transaction_id, name, email, duration, appointment } = req.body;
-    console.log(`[STATED] Verifying payment for ${email}...`);
+    console.log(`[1/3] Verifying payment for ${email}...`);
 
     try {
         let paymentVerified = false;
+        
+        // --- Verification Logic ---
         if (paymentProvider === "paystack") {
             const resp = await axios.get(`https://api.paystack.co/transaction/verify/${reference}`, {
                 headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }
@@ -138,15 +152,21 @@ app.post("/verify-payment", async (req, res) => {
         }
 
         if (paymentVerified) {
-            // 1. Create Calendar Event & Get Meet Link
+            console.log(`[2/3] Payment Success. Creating Calendar for ${name}...`);
+
+            // We await the calendar link to ensure the email has the correct URL
             const meetLink = await createCalendarEvent(name, email, appointment, duration);
 
-            // 2. Send Emails (Pass the meet link if created)
-            await sendEmails(name, email, duration, meetLink || "Check your calendar soon.");
+            console.log(`[3/3] Sending Confirmation Email...`);
+            // Pass the meetLink (or a fallback) to the email function
+            await sendEmails(name, email, duration, meetLink);
             
             return res.status(200).json({ success: true, meetLink });
         }
+        
+        console.log(`❌ Payment Verification Failed for ${email}`);
         res.status(400).json({ success: false });
+
     } catch (error) {
         console.error("🚨 System Error:", error.message);
         res.status(500).json({ message: "Internal Server Error" });
