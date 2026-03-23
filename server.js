@@ -22,13 +22,11 @@ const auth = new google.auth.GoogleAuth({
 const calendar = google.calendar({ version: 'v3', auth });
 
 /* ================= NEW: CREATE CALENDAR EVENT FUNCTION ================= */
+// --- Updated Create Event (No Attendees to avoid Domain Error) ---
 async function createCalendarEvent(name, email, appointmentString, duration) {
     try {
-        console.log(`[PROCESS] Creating event for: ${appointmentString} | Duration: ${duration}`);
-
-        // 1. Split "2026-03-25 at 01:00 PM"
         const parts = appointmentString.split(' at ');
-        const datePart = parts[0]; // YYYY-MM-DD
+        const datePart = parts[0];
         const [time, modifier] = parts[1].split(' ');
         let [hours, minutes] = time.split(':');
 
@@ -36,54 +34,42 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
         if (modifier === 'PM' && finalHours !== 12) finalHours += 12;
         if (modifier === 'AM' && finalHours === 12) finalHours = 0;
 
-        // 2. Format components to be 2 digits (e.g., 09 instead of 9)
         const HH = finalHours.toString().padStart(2, '0');
         const MM = minutes.toString().padStart(2, '0');
 
-        // 3. Construct Start ISO
         const isoStart = `${datePart}T${HH}:${MM}:00+01:00`;
-        
-        // 4. Calculate End Time using numeric manipulation to avoid UTC bugs
         const startMillis = new Date(`${datePart}T${HH}:${MM}:00`).getTime();
         const durationMillis = (parseInt(duration) || 60) * 60000;
         const endDateObj = new Date(startMillis + durationMillis);
 
-        const endHH = endDateObj.getHours().toString().padStart(2, '0');
-        const endMM = endDateObj.getMinutes().toString().padStart(2, '0');
-        const isoEnd = `${datePart}T${endHH}:${endMM}:00+01:00`;
-
-        console.log(`[DEBUG] Final Strings - Start: ${isoStart} | End: ${isoEnd}`);
+        const isoEnd = `${datePart}T${endDateObj.getHours().toString().padStart(2, '0')}:${endDateObj.getMinutes().toString().padStart(2, '0')}:00+01:00`;
 
         const event = {
-    summary: `Strategy Session: ${name}`,
-    // Put the email in the description so you can see it on your calendar
-    description: `1-on-1 Business Consultation.\nClient Email: ${email}\nDuration: ${duration} mins.`,
-    start: { dateTime: isoStart, timeZone: 'Africa/Lagos' },
-    end: { dateTime: isoEnd, timeZone: 'Africa/Lagos' },
-    
-    // REMOVED the attendees array to bypass the "Domain-Wide Delegation" error
-    
-    conferenceData: {
-        createRequest: { 
-            requestId: `mtx-${Date.now()}`, 
-            conferenceSolutionKey: { type: "hangoutsMeet" } 
-        }
-    },
-};
+            summary: `Strategy Session: ${name}`,
+            description: `Client: ${email}\nDuration: ${duration} mins.\n\nPLEASE MANUALLY INVITE THE CLIENT TO THIS MEETING.`,
+            start: { dateTime: isoStart, timeZone: 'Africa/Lagos' },
+            end: { dateTime: isoEnd, timeZone: 'Africa/Lagos' },
+            // NO ATTENDEES HERE - Bypasses Delegation Error
+            conferenceData: {
+                createRequest: { requestId: `mtx-${Date.now()}`, conferenceSolutionKey: { type: "hangoutsMeet" } }
+            },
+        };
 
         const response = await calendar.events.insert({
             calendarId: 'meritrixconsult@gmail.com',
             resource: event,
             conferenceDataVersion: 1,
-            sendUpdates: 'all',
         });
 
-        return response.data.htmlLink;
+        // Get the Meet Link from the response
+        const meetLink = response.data.conferenceData?.entryPoints?.find(ep => ep.entryPointType === 'video')?.uri;
+        return meetLink || response.data.htmlLink;
     } catch (error) {
-        console.error("❌ Calendar API Error:", error.message);
-        throw error; // Pass it back to verify-payment to catch
+        console.error("❌ Calendar Error:", error.message);
+        return null; // Return null so the main process can still send the email
     }
 }
+
 
 /* ================= HELPERS ================= */
 
@@ -126,44 +112,41 @@ async function sendEmails(name, email, duration, meetingLink) {
 
 /* ================= VERIFY PAYMENT & CREATE EVENT ================= */
 
+
+// --- Updated Verify Route ---
 app.post("/verify-payment", async (req, res) => {
-  const { paymentProvider, reference, transaction_id, name, email, duration, appointment } = req.body;
+    const { paymentProvider, reference, transaction_id, name, email, duration, appointment } = req.body;
+    console.log(`[STATED] Verifying payment for ${email}...`);
 
-  try {
-    let paymentVerified = false;
+    try {
+        let paymentVerified = false;
+        if (paymentProvider === "paystack") {
+            const resp = await axios.get(`https://api.paystack.co/transaction/verify/${reference}`, {
+                headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }
+            });
+            paymentVerified = resp.data.data.status === "success";
+        } else if (paymentProvider === "flutterwave") {
+            const resp = await axios.get(`https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`, {
+                headers: { Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}` }
+            });
+            paymentVerified = resp.data.data.status === "successful";
+        }
 
-    // 1. Verify with Paystack or Flutterwave
-    if (paymentProvider === "paystack") {
-      const resp = await axios.get(`https://api.paystack.co/transaction/verify/${reference}`, {
-        headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }
-      });
-      paymentVerified = resp.data.data.status === "success";
-    } else if (paymentProvider === "flutterwave") {
-      const resp = await axios.get(`https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`, {
-        headers: { Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}` }
-      });
-      paymentVerified = resp.data.data.status === "successful";
+        if (paymentVerified) {
+            // 1. Create Calendar Event & Get Meet Link
+            const meetLink = await createCalendarEvent(name, email, appointment, duration);
+
+            // 2. Send Emails (Pass the meet link if created)
+            await sendEmails(name, email, duration, meetLink || "Check your calendar soon.");
+            
+            return res.status(200).json({ success: true, meetLink });
+        }
+        res.status(400).json({ success: false });
+    } catch (error) {
+        console.error("🚨 System Error:", error.message);
+        res.status(500).json({ message: "Internal Server Error" });
     }
-
-    if (paymentVerified) {
-      console.log(`💰 Payment confirmed. Creating calendar event for ${email}...`);
-
-      // 2. CREATE THE ACTUAL GOOGLE CALENDAR EVENT NOW
-      const calendarLink = await createCalendarEvent(name, email, appointment, duration);
-
-      // 3. SEND EMAILS WITH THE LINK
-      await sendEmails(name, email, duration, calendarLink);
-      
-      return res.status(200).json({ success: true, message: "Booking complete!" });
-    } else {
-      return res.status(400).json({ success: false, message: "Verification failed." });
-    }
-  } catch (error) {
-    console.error("🚨 System Error:", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
-  }
 });
-
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
 });
