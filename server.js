@@ -152,19 +152,19 @@ app.post("/reserve-slot", (req, res) => {
  * STEP 3: Verification & Activation
  */
 app.post("/verify-payment", async (req, res) => {
-  const { paymentProvider, reference, transaction_id, name, email, duration, googleEventId } = req.body;
+  // We added email here to help find the booking in memory
+  const { paymentProvider, reference, transaction_id, name, email, duration } = req.body;
 
   try {
     let paymentVerified = false;
 
-    // PAYSTACK
+    // 1. VERIFY WITH GATEWAY (Keep your existing axios logic)
     if (paymentProvider === "paystack") {
       const resp = await axios.get(`https://api.paystack.co/transaction/verify/${reference}`, {
         headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }
       });
       paymentVerified = resp.data.data.status === "success";
     } 
-    // FLUTTERWAVE
     else if (paymentProvider === "flutterwave") {
       const resp = await axios.get(`https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`, {
         headers: { Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}` }
@@ -173,16 +173,27 @@ app.post("/verify-payment", async (req, res) => {
     }
 
     if (paymentVerified) {
-      // STOP THE TIMER: Mark as paid so the background process ignores it
-      if (googleEventId && pendingBookings[googleEventId]) {
-          pendingBookings[googleEventId].paid = true;
+      console.log(`💰 Payment confirmed for: ${email}`);
+
+      // 2. STOP THE TIMER (The "Defuse" Logic)
+      // We look through pendingBookings to find the one matching this email
+      const bookingId = Object.keys(pendingBookings).find(
+        id => pendingBookings[id].email === email
+      );
+
+      if (bookingId) {
+        pendingBookings[bookingId].paid = true;
+        console.log(`✨ TIMER DEFUSED for event: ${bookingId}. This booking will NOT be deleted.`);
+      } else {
+        console.log(`⚠️ Warning: Payment verified but no pending booking found for ${email}. (Maybe the 5 mins already passed?)`);
       }
 
+      // 3. SEND EMAILS
       await sendEmails(name, email, duration);
       
       return res.status(200).json({ 
         success: true,
-        message: "Payment verified and emails sent." 
+        message: "Payment verified, timer stopped, and emails sent." 
       });
 
     } else {
@@ -193,7 +204,6 @@ app.post("/verify-payment", async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 });
-
 
 
 
