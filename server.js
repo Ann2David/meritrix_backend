@@ -55,18 +55,21 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
         console.log(`[DEBUG] Final Strings - Start: ${isoStart} | End: ${isoEnd}`);
 
         const event = {
-            summary: `Strategy Session: ${name}`,
-            description: `1-on-1 Business Consultation. Client: ${email}`,
-            start: { dateTime: isoStart, timeZone: 'Africa/Lagos' },
-            end: { dateTime: isoEnd, timeZone: 'Africa/Lagos' },
-            attendees: [{ email: email }, { email: 'meritrixconsult@gmail.com' }],
-            conferenceData: {
-                createRequest: { 
-                    requestId: `mtx-${Date.now()}`, 
-                    conferenceSolutionKey: { type: "hangoutsMeet" } 
-                }
-            },
-        };
+    summary: `Strategy Session: ${name}`,
+    // Put the email in the description so you can see it on your calendar
+    description: `1-on-1 Business Consultation.\nClient Email: ${email}\nDuration: ${duration} mins.`,
+    start: { dateTime: isoStart, timeZone: 'Africa/Lagos' },
+    end: { dateTime: isoEnd, timeZone: 'Africa/Lagos' },
+    
+    // REMOVED the attendees array to bypass the "Domain-Wide Delegation" error
+    
+    conferenceData: {
+        createRequest: { 
+            requestId: `mtx-${Date.now()}`, 
+            conferenceSolutionKey: { type: "hangoutsMeet" } 
+        }
+    },
+};
 
         const response = await calendar.events.insert({
             calendarId: 'meritrixconsult@gmail.com',
