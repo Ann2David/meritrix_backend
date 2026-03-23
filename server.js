@@ -22,7 +22,6 @@ const auth = new google.auth.GoogleAuth({
 const calendar = google.calendar({ version: 'v3', auth });
 
 /* ================= NEW: CREATE CALENDAR EVENT FUNCTION ================= */
-// --- Updated Create Event (No Attendees to avoid Domain Error) ---
 async function createCalendarEvent(name, email, appointmentString, duration) {
     try {
         const parts = appointmentString.split(' at ');
@@ -46,12 +45,14 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
 
         const event = {
             summary: `Strategy Session: ${name}`,
-            description: `Client: ${email}\nDuration: ${duration} mins.\n\nPLEASE MANUALLY INVITE THE CLIENT TO THIS MEETING.`,
+            description: `Client: ${email}\nDuration: ${duration} mins.\n\nNote: Please manually ensure the client is invited if they don't see the link.`,
             start: { dateTime: isoStart, timeZone: 'Africa/Lagos' },
             end: { dateTime: isoEnd, timeZone: 'Africa/Lagos' },
-            // NO ATTENDEES HERE - Bypasses Delegation Error
             conferenceData: {
-                createRequest: { requestId: `mtx-${Date.now()}`, conferenceSolutionKey: { type: "hangoutsMeet" } }
+                createRequest: { 
+                    requestId: `mtx-${Date.now()}`, 
+                    conferenceSolutionKey: { type: 'hangoutsMeet' } // Exact ID required
+                }
             },
         };
 
@@ -61,12 +62,16 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
             conferenceDataVersion: 1,
         });
 
-        // Get the Meet Link from the response
-        const meetLink = response.data.conferenceData?.entryPoints?.find(ep => ep.entryPointType === 'video')?.uri;
-        return meetLink || response.data.htmlLink;
+        // Safe extraction of the Meet Link
+        const conf = response.data.conferenceData;
+        const meetLink = conf && conf.entryPoints ? conf.entryPoints[0].uri : null;
+        
+        console.log("✅ Calendar Event Created. Meet Link:", meetLink);
+        return meetLink;
     } catch (error) {
         console.error("❌ Calendar Error:", error.message);
-        return null; // Return null so the main process can still send the email
+        // We return a "Manual Link Needed" string so the email still sends
+        return "Will be sent manually by Victoria"; 
     }
 }
 
