@@ -24,45 +24,45 @@ const calendar = google.calendar({ version: 'v3', auth });
 /* ================= NEW: CREATE CALENDAR EVENT FUNCTION ================= */
 async function createCalendarEvent(name, email, appointmentString, duration) {
     try {
-        console.log(`Parsing appointment string: ${appointmentString}`); // Debugging
+        console.log(`[PROCESS] Creating event for: ${appointmentString} | Duration: ${duration}`);
 
-        // 1. Split "2026-03-25 at 09:00 AM"
+        // 1. Split "2026-03-25 at 01:00 PM"
         const parts = appointmentString.split(' at ');
-        const datePart = parts[0]; // "2026-03-25"
-        const timePart = parts[1]; // "09:00 AM"
-
-        // 2. Extract hours and minutes
-        const [time, modifier] = timePart.split(' ');
+        const datePart = parts[0]; // YYYY-MM-DD
+        const [time, modifier] = parts[1].split(' ');
         let [hours, minutes] = time.split(':');
 
-        // 3. Convert to 24-hour format
         let finalHours = parseInt(hours);
         if (modifier === 'PM' && finalHours !== 12) finalHours += 12;
         if (modifier === 'AM' && finalHours === 12) finalHours = 0;
 
-        // 4. Construct a clean ISO string for Google (Lagos Time +01:00)
-        // Format: YYYY-MM-DDTHH:mm:ss+01:00
-        const isoStart = `${datePart}T${finalHours.toString().padStart(2, '0')}:${minutes}:00+01:00`;
+        // 2. Format components to be 2 digits (e.g., 09 instead of 9)
+        const HH = finalHours.toString().padStart(2, '0');
+        const MM = minutes.toString().padStart(2, '0');
+
+        // 3. Construct Start ISO
+        const isoStart = `${datePart}T${HH}:${MM}:00+01:00`;
         
-        // 5. Calculate End Time
-        const startDate = new Date(isoStart);
-        const endDate = new Date(startDate.getTime() + parseInt(duration) * 60000);
+        // 4. Calculate End Time using numeric manipulation to avoid UTC bugs
+        const startMillis = new Date(`${datePart}T${HH}:${MM}:00`).getTime();
+        const durationMillis = (parseInt(duration) || 60) * 60000;
+        const endDateObj = new Date(startMillis + durationMillis);
+
+        const endHH = endDateObj.getHours().toString().padStart(2, '0');
+        const endMM = endDateObj.getMinutes().toString().padStart(2, '0');
+        const isoEnd = `${datePart}T${endHH}:${endMM}:00+01:00`;
+
+        console.log(`[DEBUG] Final Strings - Start: ${isoStart} | End: ${isoEnd}`);
 
         const event = {
             summary: `Strategy Session: ${name}`,
-            description: `1-on-1 Consultation with Meritrix Global. Duration: ${duration} mins.`,
-            start: { 
-                dateTime: isoStart, 
-                timeZone: 'Africa/Lagos' 
-            },
-            end: { 
-                dateTime: endDate.toISOString(), 
-                timeZone: 'Africa/Lagos' 
-            },
+            description: `1-on-1 Business Consultation. Client: ${email}`,
+            start: { dateTime: isoStart, timeZone: 'Africa/Lagos' },
+            end: { dateTime: isoEnd, timeZone: 'Africa/Lagos' },
             attendees: [{ email: email }, { email: 'meritrixconsult@gmail.com' }],
             conferenceData: {
                 createRequest: { 
-                    requestId: "meritrix-" + Date.now(), 
+                    requestId: `mtx-${Date.now()}`, 
                     conferenceSolutionKey: { type: "hangoutsMeet" } 
                 }
             },
@@ -75,15 +75,10 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
             sendUpdates: 'all',
         });
 
-        console.log(`✅ Event Created successfully!`);
         return response.data.htmlLink;
     } catch (error) {
-        console.error("❌ Google Calendar Create Error:", error.message);
-        // Log the full error to see if it's a formatting issue or a permission issue
-        if (error.response && error.response.data) {
-            console.error("Full Error Data:", JSON.stringify(error.response.data));
-        }
-        return null;
+        console.error("❌ Calendar API Error:", error.message);
+        throw error; // Pass it back to verify-payment to catch
     }
 }
 
