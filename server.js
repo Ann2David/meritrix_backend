@@ -37,10 +37,19 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
         if (modifier === 'PM' && finalHours !== 12) finalHours += 12;
         if (modifier === 'AM' && finalHours === 12) finalHours = 0;
 
-        const isoStart = `${datePart}T${finalHours.toString().padStart(2, '0')}:${minutes.padStart(2, '0')}:00+01:00`;
-        const startMillis = new Date(`${datePart}T${finalHours.toString().padStart(2, '0')}:${minutes}:00`).getTime();
+        const HH = finalHours.toString().padStart(2, '0');
+        const MM = minutes.toString().padStart(2, '0');
+
+        // Fixed ISO string formatting
+        const isoStart = `${datePart}T${HH}:${MM}:00+01:00`;
+        const startMillis = new Date(`${datePart}T${HH}:${MM}:00`).getTime();
         const durationMillis = (parseInt(duration) || 60) * 60000;
-        const isoEnd = new Date(startMillis + durationMillis).toISOString().replace(/\.\d+Z$/, '+01:00');
+        const endDateObj = new Date(startMillis + durationMillis);
+        
+        // Formatting end time correctly for ISO
+        const endHH = endDateObj.getHours().toString().padStart(2, '0');
+        const endMM = endDateObj.getMinutes().toString().padStart(2, '0');
+        const isoEnd = `${datePart}T${endHH}:${endMM}:00+01:00`;
 
         const event = {
             summary: `Strategy Session: ${name}`,
@@ -58,15 +67,19 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
         const response = await calendar.events.insert({
             calendarId: 'meritrixconsult@gmail.com',
             resource: event,
+            // CRITICAL: This must be 1 to enable Google Meet generation
             conferenceDataVersion: 1, 
         });
 
-        let meetLink = response.data.conferenceData?.entryPoints?.find(ep => ep.entryPointType === 'video')?.uri;
-        console.log("✅ Admin Calendar Event Created.");
+        // Robust link extraction
+        const meetLink = response.data.conferenceData?.entryPoints?.find(ep => ep.entryPointType === 'video')?.uri;
+        
+        console.log("✅ Google Meet Generated:", meetLink);
         return meetLink || "https://meet.google.com/lookup/meritrix"; 
 
     } catch (error) {
         console.error("❌ Calendar Error:", error.message);
+        // Fallback so the email still has a link
         return "https://meet.google.com/lookup/meritrix"; 
     }
 }
