@@ -158,28 +158,42 @@ app.post("/verify-payment", async (req, res) => {
 
     try {
         let paymentVerified = false;
-        // ... (keep your existing verification logic) ...
+
+        // --- Verification Logic ---
+        if (paymentProvider === "paystack") {
+            const resp = await axios.get(`https://api.paystack.co/transaction/verify/${reference}`, {
+                headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }
+            });
+            paymentVerified = resp.data.data.status === "success";
+        } else if (paymentProvider === "flutterwave") {
+            const resp = await axios.get(`https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`, {
+                headers: { Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}` }
+            });
+            paymentVerified = resp.data.data.status === "successful";
+        }
 
         if (paymentVerified) {
             console.log(`[2/3] Payment Success. Sending instant response to user...`);
             
-            // SEND RESPONSE IMMEDIATELY - This kills the loading spinner on the frontend
-            res.status(200).json({ success: true, message: "Booking confirmed!" });
+            // 1. Tell the user it's done immediately
+            res.status(200).json({ success: true, message: "Booking confirmed! Check your email." });
 
-            // RUN HEAVY TASKS IN BACKGROUND - No 'await' here so the user doesn't wait
+            // 2. Heavy work happens in the background (no 'await' on this function)
             (async () => {
                 try {
                     const meetLink = await createCalendarEvent(name, email, appointment, duration);
                     await sendEmails(name, email, duration, meetLink, appointment);
-                    console.log(`[3/3] Background tasks (Calendar/Email) completed for ${email}`);
+                    console.log(`[3/3] Background tasks (Calendar/Email) finished for ${email}`);
                 } catch (bgError) {
                     console.error("🚨 Background Task Error:", bgError.message);
                 }
             })();
             
-            return; // Exit the request handler
+            return; 
         }
-        res.status(400).json({ success: false });
+
+        res.status(400).json({ success: false, message: "Payment could not be verified." });
+
     } catch (error) {
         console.error("🚨 System Error:", error.message);
         if (!res.headersSent) res.status(500).json({ message: "Internal Server Error" });
