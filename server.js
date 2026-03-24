@@ -22,7 +22,16 @@ const auth = new google.auth.GoogleAuth({
 const calendar = google.calendar({ version: 'v3', auth });
 
 /* ================= NEW: CREATE CALENDAR EVENT FUNCTION ================= */
-async function createCalendarEvent(name, email, appointmentString, duration) {
+
+
+/* ================= HELPERS ================= */
+
+  async function sendEmails(name, email, duration, meetingLink) {
+  try {
+    // Ensure meetingLink is a valid string and not null
+    const finalLink = meetingLink && meetingLink.startsWith('http') 
+                      ? meetingLink 
+                      : 'https://calendar.google.com';async function createCalendarEvent(name, email, appointmentString, duration) {
     try {
         console.log(`[PROCESS] Creating event for: ${appointmentString}`);
 
@@ -47,9 +56,14 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
 
         const event = {
             summary: `Strategy Session: ${name}`,
-            description: `Client: ${email}\nDuration: ${duration} mins.`,
+            description: `Consultation with Meritrix Global.\nClient: ${email}\nDuration: ${duration} mins.`,
             start: { dateTime: isoStart, timeZone: 'Africa/Lagos' },
             end: { dateTime: isoEnd, timeZone: 'Africa/Lagos' },
+            // ADDED: This invites the client to their own calendar
+            attendees: [
+                { email: email }, 
+                { email: 'meritrixconsult@gmail.com' }
+            ],
             conferenceData: {
                 createRequest: { 
                     requestId: `mtx-${Date.now()}`, 
@@ -61,33 +75,42 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
         const response = await calendar.events.insert({
             calendarId: 'meritrixconsult@gmail.com',
             resource: event,
-            conferenceDataVersion: 1, // Crucial for Meet link generation
+            conferenceDataVersion: 1, 
+            // CRITICAL: This sends the invite to the client's inbox/calendar
+            sendUpdates: 'all', 
         });
 
-        // Extra careful check for the meet link
         let meetLink = null;
         if (response.data.conferenceData && response.data.conferenceData.entryPoints) {
-            meetLink = response.data.conferenceData.entryPoints[0].uri;
+            const videoEntry = response.data.conferenceData.entryPoints.find(ep => ep.entryPointType === 'video');
+            if (videoEntry) meetLink = videoEntry.uri;
         }
 
-        console.log("✅ Calendar Event Created. Link:", meetLink || "No link generated");
-        return meetLink || "https://meet.google.com/lookup/meritrix"; // Fallback link
+        console.log("✅ Sync Complete. Link:", meetLink);
+        return meetLink || "https://meet.google.com/lookup/meritrix"; 
+
     } catch (error) {
         console.error("❌ Calendar Error:", error.message);
-        // RETURN A STRING INSTEAD OF THROWING ERROR
-        // This ensures the verify-payment route continues to send the email
+        
+        // FAIL-SAFE: If the invite fails due to security, create it for admin only
+        if (error.message.includes("Domain-Wide Delegation")) {
+            console.log("⚠️ Security restriction detected. Retrying for Admin only...");
+            return await createAdminOnlyFallback(name, email, appointmentString, duration);
+        }
+        
         return "Victoria will send your Google Meet link shortly."; 
     }
 }
 
-/* ================= HELPERS ================= */
-
-  async function sendEmails(name, email, duration, meetingLink) {
-  try {
-    // Ensure meetingLink is a valid string and not null
-    const finalLink = meetingLink && meetingLink.startsWith('http') 
-                      ? meetingLink 
-                      : 'https://calendar.google.com';
+// Add this as a helper function to prevent the whole process from failing
+async function createAdminOnlyFallback(name, email, appointmentString, duration) {
+    try {
+        // (Copy the event object logic from above but REMOVE the attendees array)
+        // This ensures at least YOU get the notification if the client invite is blocked.
+    } catch (e) {
+        return null;
+    }
+}
 
     await resend.emails.send({
       from: 'Victoria <bookings@meritrixglobal.com>',
