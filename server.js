@@ -186,6 +186,17 @@ app.post("/verify-payment", async (req, res) => {
     }
 });
 
+// This gives the Cron-job something to find!
+app.get("/", (req, res) => {
+  res.status(200).send("Meritrix Backend is Live and Awake.");
+});
+
+// Or a specific health check route
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "up" });
+});
+
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
 });
