@@ -15,70 +15,55 @@ app.use(express.json());
 
 
 /* ================= GOOGLE CALENDAR CONFIG ================= */
-const auth = new google.auth.GoogleAuth({
-  keyFile: path.join(__dirname, 'service-account.json'), 
-  scopes: ['https://www.googleapis.com/auth/calendar'],
-});
-const calendar = google.calendar({ version: 'v3', auth });
-
-/* ================= HELPERS: CALENDAR LOGIC ================= */
-
 async function createCalendarEvent(name, email, appointmentString, duration) {
     try {
         console.log(`[PROCESS] Creating event for: ${appointmentString}`);
 
-        const parts = appointmentString.split(' at ');
-        const datePart = parts[0];
-        const [time, modifier] = parts[1].split(' ');
-        let [hours, minutes] = time.split(':');
+        // 1. Better Date Parsing
+        const parts = appointmentString.split(' at '); // "2026-03-31 at 09:00 AM"
+        const datePart = parts[0].trim(); // "2026-03-31"
+        const timeParts = parts[1].trim().split(' '); // ["09:00", "AM"]
+        let [hours, minutes] = timeParts[0].split(':');
 
         let finalHours = parseInt(hours);
-        if (modifier === 'PM' && finalHours !== 12) finalHours += 12;
-        if (modifier === 'AM' && finalHours === 12) finalHours = 0;
+        if (timeParts[1] === 'PM' && finalHours !== 12) finalHours += 12;
+        if (timeParts[1] === 'AM' && finalHours === 12) finalHours = 0;
 
-        const HH = finalHours.toString().padStart(2, '0');
-        const MM = minutes.toString().padStart(2, '0');
-
-        // Fixed ISO string formatting
-        const isoStart = `${datePart}T${HH}:${MM}:00+01:00`;
-        const startMillis = new Date(`${datePart}T${HH}:${MM}:00`).getTime();
-        const durationMillis = (parseInt(duration) || 60) * 60000;
-        const endDateObj = new Date(startMillis + durationMillis);
+        // 2. Build VALID ISO Strings
+        // Format: YYYY-MM-DDTHH:mm:ssZ
+        const startDate = new Date(`${datePart}T${finalHours.toString().padStart(2, '0')}:${minutes}:00`);
+        const isoStart = startDate.toISOString();
         
-        // Formatting end time correctly for ISO
-        const endHH = endDateObj.getHours().toString().padStart(2, '0');
-        const endMM = endDateObj.getMinutes().toString().padStart(2, '0');
-        const isoEnd = `${datePart}T${endHH}:${endMM}:00+01:00`;
+        const endDate = new Date(startDate.getTime() + (parseInt(duration) || 60) * 60000);
+        const isoEnd = endDate.toISOString();
 
         const event = {
             summary: `Strategy Session: ${name}`,
             description: `Consultation with Meritrix Global.\nClient: ${email}`,
-            start: { dateTime: isoStart, timeZone: 'Africa/Lagos' },
-            end: { dateTime: isoEnd, timeZone: 'Africa/Lagos' },
+            start: { dateTime: isoStart },
+            end: { dateTime: isoEnd },
             conferenceData: {
                 createRequest: { 
                     requestId: `mtx-${Date.now()}`, 
-                    conferenceSolutionKey: { type: 'meet' } 
+                    conferenceSolutionKey: { type: 'hangoutsMeet' } 
                 }
             },
+            attendees: [{ email: email }, { email: 'meritrixconsult@gmail.com' }],
         };
 
         const response = await calendar.events.insert({
             calendarId: 'meritrixconsult@gmail.com',
             resource: event,
-            // CRITICAL: This must be 1 to enable Google Meet generation
             conferenceDataVersion: 1, 
         });
 
-        // Robust link extraction
         const meetLink = response.data.conferenceData?.entryPoints?.find(ep => ep.entryPointType === 'video')?.uri;
-        
         console.log("✅ Google Meet Generated:", meetLink);
         return meetLink || "https://meet.google.com/lookup/meritrix"; 
 
     } catch (error) {
-        console.error("❌ Calendar Error:", error.message);
-        // Fallback so the email still has a link
+        // Detailed error logging to see WHY it's a Bad Request
+        console.error("❌ Calendar Error Detail:", error.response?.data || error.message);
         return "https://meet.google.com/lookup/meritrix"; 
     }
 }
