@@ -29,14 +29,13 @@ const calendar = google.calendar({ version: 'v3', auth });
 
 async function createCalendarEvent(name, email, appointmentString, duration) {
     try {
-        console.log(`[PROCESS] Creating event for: ${appointmentString}`);
+        // 1. USE YOUR PERMANENT 10-LETTER CODE LINK HERE
+        const myStableMeetLink = "https://meet.google.com/cth-phso-mhq"; 
 
-        // 1. Precise Date Parsing
         const parts = appointmentString.split(' at ');
         const datePart = parts[0].trim();
         const timeParts = parts[1].trim().split(' ');
         let [hours, minutes] = timeParts[0].split(':');
-
         let finalHours = parseInt(hours);
         if (timeParts[1] === 'PM' && finalHours !== 12) finalHours += 12;
         if (timeParts[1] === 'AM' && finalHours === 12) finalHours = 0;
@@ -44,44 +43,26 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
         const start = new Date(`${datePart}T${finalHours.toString().padStart(2, '0')}:${minutes}:00Z`);
         const end = new Date(start.getTime() + (parseInt(duration) || 60) * 60000);
 
-        // 2. The Event Object - Simplified for Service Accounts
         const event = {
             summary: `Strategy Session: ${name}`,
-            description: `Consultation with Meritrix Global.\nClient: ${email}`,
+            description: `Consultation with Meritrix Global.\nJoin here: ${myStableMeetLink}`,
             start: { dateTime: start.toISOString() },
             end: { dateTime: end.toISOString() },
-            // NO attendees here to avoid 'forbiddenForServiceAccounts'
-            conferenceData: {
-                createRequest: { 
-                    requestId: `mtx-${Date.now()}`, 
-                    conferenceSolutionKey: { type: 'hangoutsMeet' } 
-                }
-            }
+            location: myStableMeetLink
         };
 
-        // 3. THE CRITICAL INJECTION
-        const response = await calendar.events.insert({
+        // This just puts it on the calendar so you don't forget
+        await calendar.events.insert({
             calendarId: 'primary', 
             resource: event,
-            conferenceDataVersion: 1, // MUST BE 1
         });
 
-        // 4. Extract the Link
-        const meetLink = response.data.conferenceData?.entryPoints?.find(ep => ep.entryPointType === 'video')?.uri;
-        
-        if (meetLink) {
-            console.log("✅ SUCCESS: Google Meet Link:", meetLink);
-            return meetLink;
-        } else {
-            console.log("⚠️ Event created, but Google Meet link failed. Using fallback.");
-            return "https://meet.google.com/lookup/meritrix";
-        }
+        console.log("✅ System Clean: Event added to calendar.");
+        return myStableMeetLink; 
 
     } catch (error) {
-        // Detailed logging to see exactly what Google says
-        const detailedError = error.response?.data?.error?.errors || error.message;
-        console.error("❌ Final Calendar Error:", JSON.stringify(detailedError, null, 2));
-        return "https://meet.google.com/lookup/meritrix"; 
+        console.error("❌ Minimal Error:", error.message);
+        return "https://meet.google.com/your-code-here"; 
     }
 }
 /* ================= HELPERS: EMAIL LOGIC ================= */
