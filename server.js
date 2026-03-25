@@ -208,7 +208,7 @@ app.get("/test-calendar", async (req, res) => {
     try {
         const testLink = await createCalendarEvent(
             "Test User", 
-            "your-email@gmail.com", 
+            "meritrixconsult@gmail.com", 
             "2026-04-01 at 10:00 AM", 
             "30"
         );
