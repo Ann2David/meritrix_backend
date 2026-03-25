@@ -52,7 +52,7 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
 
         // 2. THE CRITICAL PART: conferenceDataVersion MUST be here
         const response = await calendar.events.insert({
-            calendarId: 'primary', // Use 'primary' to ensure it hits the main calendar
+            calendarId: 'meritrixconsult@gmail.com', // Use 'primary' to ensure it hits the main calendar
             resource: event,
             conferenceDataVersion: 1, 
         });
