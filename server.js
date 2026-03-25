@@ -48,12 +48,22 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
         const endDate = new Date(startDate.getTime() + (parseInt(duration) || 60) * 60000);
 
         const event = {
-            summary: `Strategy Session: ${name}`,
-            description: `Consultation with Meritrix Global.\nClient: ${email}`,
-            start: { dateTime: startDate.toISOString() },
-            end: { dateTime: endDate.toISOString() },
-            
-        };
+    summary: `Strategy Session: ${name}`,
+    description: `Consultation with Meritrix Global.\nClient: ${email}`,
+    start: { dateTime: startDate.toISOString() },
+    end: { dateTime: endDate.toISOString() },
+    // ADD THIS: It helps Google validate the meeting organizer
+    attendees: [
+        { email: email }, 
+        { email: 'meritrixconsult@gmail.com' }
+    ],
+    conferenceData: {
+        createRequest: { 
+            requestId: `mtx-${Date.now()}`, 
+            conferenceSolutionKey: { type: 'hangoutsMeet' } // Use 'hangoutsMeet' or 'meet'
+        }
+    },
+};
 
         const response = await calendar.events.insert({
             calendarId: 'meritrixconsult@gmail.com',
