@@ -17,38 +17,37 @@ app.use(express.json());
 /* ================= GOOGLE CALENDAR CONFIG ================= */
 async function createCalendarEvent(name, email, appointmentString, duration) {
     try {
+        // Safety check to prevent the "not defined" error
+        if (typeof calendar === 'undefined') {
+            console.error("❌ Google Calendar object is not initialized at the top of the file!");
+            return "https://meet.google.com/lookup/meritrix";
+        }
+
         console.log(`[PROCESS] Creating event for: ${appointmentString}`);
 
-        // 1. Better Date Parsing
-        const parts = appointmentString.split(' at '); // "2026-03-31 at 09:00 AM"
-        const datePart = parts[0].trim(); // "2026-03-31"
-        const timeParts = parts[1].trim().split(' '); // ["09:00", "AM"]
+        const parts = appointmentString.split(' at ');
+        const datePart = parts[0].trim();
+        const timeParts = parts[1].trim().split(' ');
         let [hours, minutes] = timeParts[0].split(':');
 
         let finalHours = parseInt(hours);
         if (timeParts[1] === 'PM' && finalHours !== 12) finalHours += 12;
         if (timeParts[1] === 'AM' && finalHours === 12) finalHours = 0;
 
-        // 2. Build VALID ISO Strings
-        // Format: YYYY-MM-DDTHH:mm:ssZ
         const startDate = new Date(`${datePart}T${finalHours.toString().padStart(2, '0')}:${minutes}:00`);
-        const isoStart = startDate.toISOString();
-        
         const endDate = new Date(startDate.getTime() + (parseInt(duration) || 60) * 60000);
-        const isoEnd = endDate.toISOString();
 
         const event = {
             summary: `Strategy Session: ${name}`,
             description: `Consultation with Meritrix Global.\nClient: ${email}`,
-            start: { dateTime: isoStart },
-            end: { dateTime: isoEnd },
+            start: { dateTime: startDate.toISOString() },
+            end: { dateTime: endDate.toISOString() },
             conferenceData: {
                 createRequest: { 
                     requestId: `mtx-${Date.now()}`, 
                     conferenceSolutionKey: { type: 'hangoutsMeet' } 
                 }
             },
-            attendees: [{ email: email }, { email: 'meritrixconsult@gmail.com' }],
         };
 
         const response = await calendar.events.insert({
@@ -58,12 +57,10 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
         });
 
         const meetLink = response.data.conferenceData?.entryPoints?.find(ep => ep.entryPointType === 'video')?.uri;
-        console.log("✅ Google Meet Generated:", meetLink);
         return meetLink || "https://meet.google.com/lookup/meritrix"; 
 
     } catch (error) {
-        // Detailed error logging to see WHY it's a Bad Request
-        console.error("❌ Calendar Error Detail:", error.response?.data || error.message);
+        console.error("❌ Calendar Error Detail:", error.message);
         return "https://meet.google.com/lookup/meritrix"; 
     }
 }
