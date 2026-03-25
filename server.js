@@ -61,7 +61,7 @@ const event = {
     conferenceData: {
         createRequest: { 
             requestId: `meritrix-${Date.now()}`, // Must be unique every time
-            conferenceSolutionKey: { type: 'hangoutsMeet' } 
+            conferenceSolutionKey: { type: 'meet' } 
         }
     },
 };
