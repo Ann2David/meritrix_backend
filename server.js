@@ -52,12 +52,7 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
             description: `Consultation with Meritrix Global.\nClient: ${email}`,
             start: { dateTime: startDate.toISOString() },
             end: { dateTime: endDate.toISOString() },
-            conferenceData: {
-                createRequest: { 
-                    requestId: `mtx-${Date.now()}`, 
-                    conferenceSolutionKey: { type: 'hangoutsMeet' } 
-                }
-            },
+            
         };
 
         const response = await calendar.events.insert({
