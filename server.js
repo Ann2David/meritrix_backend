@@ -53,7 +53,7 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
 
         // This just puts it on the calendar so you don't forget
         await calendar.events.insert({
-            calendarId: 'primary', 
+            calendarId: 'meritrixconsult@gmail.com', 
             resource: event,
         });
 
