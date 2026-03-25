@@ -26,43 +26,47 @@ const auth = new google.auth.GoogleAuth({
 const calendar = google.calendar({ version: 'v3', auth });
 
 /* ================= GOOGLE CALENDAR INITIALIZATION ================= */
-
-async function createCalendarEvent(name, email, appointmentString, duration) {
+ async function createCalendarEvent(name, email, appointmentString, duration) {
     try {
-        // 1. USE YOUR PERMANENT 10-LETTER CODE LINK HERE
         const myStableMeetLink = "https://meet.google.com/cth-phso-mhq"; 
 
+        // 1. Precise Date Parsing (Splits "2026-04-01 at 10:00 AM")
         const parts = appointmentString.split(' at ');
         const datePart = parts[0].trim();
         const timeParts = parts[1].trim().split(' ');
         let [hours, minutes] = timeParts[0].split(':');
+
         let finalHours = parseInt(hours);
         if (timeParts[1] === 'PM' && finalHours !== 12) finalHours += 12;
         if (timeParts[1] === 'AM' && finalHours === 12) finalHours = 0;
 
+        // 2. Create the Start Time object
         const start = new Date(`${datePart}T${finalHours.toString().padStart(2, '0')}:${minutes}:00Z`);
+        
+        // 3. DYNAMIC MATH: Add the duration (30 or 60) to the start time
+        // We multiply by 60000 to convert minutes to milliseconds
         const end = new Date(start.getTime() + (parseInt(duration) || 60) * 60000);
 
         const event = {
-            summary: `Strategy Session: ${name}`,
-            description: `Consultation with Meritrix Global.\nJoin here: ${myStableMeetLink}`,
+            summary: `Strategy Session (${duration}m): ${name}`,
+            description: `Consultation with Meritrix Global.\nClient: ${email}\nJoin here: ${myStableMeetLink}`,
             start: { dateTime: start.toISOString() },
-            end: { dateTime: end.toISOString() },
+            end: { dateTime: end.toISOString() }, // This will now be 10:30 or 11:00 correctly!
             location: myStableMeetLink
         };
 
-        // This just puts it on the calendar so you don't forget
+        // 4. Insert into YOUR calendar
         await calendar.events.insert({
             calendarId: 'meritrixconsult@gmail.com', 
             resource: event,
         });
 
-        console.log("✅ System Clean: Event added to calendar.");
+        console.log(`✅ Success: ${duration}min event added to calendar.`);
         return myStableMeetLink; 
 
     } catch (error) {
-        console.error("❌ Minimal Error:", error.message);
-        return "https://meet.google.com/your-code-here"; 
+        console.error("❌ Backend Error:", error.message);
+        return "https://meet.google.com/cth-phso-mhq"; 
     }
 }
 /* ================= HELPERS: EMAIL LOGIC ================= */
@@ -133,21 +137,26 @@ async function sendEmails(name, email, duration, meetingLink, appointmentString)
 
 /* ================= VERIFY PAYMENT ROUTE ================= */
 
+// ... (Your imports and initializations remain the same) ...
+
 app.post("/verify-payment", async (req, res) => {
-    const { paymentProvider, reference, transaction_id, name, email, duration, appointment } = req.body;
+    // FIX: Added 'transaction_id' here just in case Flutterwave sends it that way
+    const { name, email, duration, appointment, reference, transaction_id, paymentProvider } = req.body;
+
     console.log(`[1/3] Verifying payment for ${email}...`);
 
     try {
         let paymentVerified = false;
 
-        // --- Verification Logic ---
         if (paymentProvider === "paystack") {
             const resp = await axios.get(`https://api.paystack.co/transaction/verify/${reference}`, {
                 headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }
             });
             paymentVerified = resp.data.data.status === "success";
         } else if (paymentProvider === "flutterwave") {
-            const resp = await axios.get(`https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`, {
+            // Use transaction_id or reference depending on what the frontend sends
+            const idToVerify = transaction_id || reference;
+            const resp = await axios.get(`https://api.flutterwave.com/v3/transactions/${idToVerify}/verify`, {
                 headers: { Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}` }
             });
             paymentVerified = resp.data.data.status === "successful";
@@ -156,15 +165,14 @@ app.post("/verify-payment", async (req, res) => {
         if (paymentVerified) {
             console.log(`[2/3] Payment Success. Sending instant response to user...`);
             
-            // 1. Tell the user it's done immediately
             res.status(200).json({ success: true, message: "Booking confirmed! Check your email." });
 
-            // 2. Heavy work happens in the background (no 'await' on this function)
             (async () => {
                 try {
+                    // This now correctly uses the 30 or 60 from the frontend
                     const meetLink = await createCalendarEvent(name, email, appointment, duration);
                     await sendEmails(name, email, duration, meetLink, appointment);
-                    console.log(`[3/3] Background tasks (Calendar/Email) finished for ${email}`);
+                    console.log(`[3/3] Background tasks finished for ${email}`);
                 } catch (bgError) {
                     console.error("🚨 Background Task Error:", bgError.message);
                 }
@@ -180,6 +188,8 @@ app.post("/verify-payment", async (req, res) => {
         if (!res.headersSent) res.status(500).json({ message: "Internal Server Error" });
     }
 });
+
+// ... (Rest of your file) ...
 
 
 
