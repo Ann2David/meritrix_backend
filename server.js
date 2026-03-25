@@ -45,26 +45,25 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
         const start = new Date(`${datePart}T${finalHours.toString().padStart(2, '0')}:${minutes}:00Z`);
         const end = new Date(start.getTime() + (parseInt(duration) || 60) * 60000);
 
-        const event = {
-    summary: `Strategy Session: ${name}`,
-    description: `Consultation with Meritrix Global.\nClient: ${email}`,
-    start: { dateTime: start.toISOString() },
-    end: { dateTime: end.toISOString() },
-    // 1. REMOVE the attendees array completely to stop the 'forbidden' error
-    conferenceData: {
-        createRequest: { 
-            requestId: `mtx-${Date.now()}`, 
-            conferenceSolutionKey: { type: 'hangoutsMeet' } 
-        }
-    },
-};
+       const event = {
+            summary: `Strategy Session: ${name}`,
+            description: `Consultation with Meritrix Global.\nClient: ${email}`,
+            start: { dateTime: start.toISOString() },
+            end: { dateTime: end.toISOString() },
+            conferenceData: {
+                createRequest: { 
+                    requestId: `mtx-${Date.now()}`, 
+                    conferenceSolutionKey: { type: 'hangoutsMeet' } 
+                }
+            },
+        };
 
-const response = await calendar.events.insert({
-    // 2. Use 'primary' - this uses the Service Account's own calendar
-    calendarId: 'primary', 
-    resource: event,
-    conferenceDataVersion: 1, 
-});
+        const response = await calendar.events.insert({
+            calendarId: 'primary', 
+            resource: event,
+            conferenceDataVersion: 1, 
+        });
+
         const meetLink = response.data.conferenceData?.entryPoints?.find(ep => ep.entryPointType === 'video')?.uri;
         
         console.log("✅ New Meet Link Generated:", meetLink);
