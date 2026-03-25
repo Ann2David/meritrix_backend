@@ -14,27 +14,12 @@ app.use(cors());
 app.use(express.json());
 
 /* ================= GOOGLE CALENDAR INITIALIZATION ================= */
-// 1. Setup Auth
-const auth = new google.auth.GoogleAuth({
-  keyFile: path.join(__dirname, 'service-account.json'), 
-  scopes: ['https://www.googleapis.com/auth/calendar'],
-});
 
-// 2. Setup the Calendar Object (This is what the function is looking for!)
-const calendar = google.calendar({ version: 'v3', auth });
-
-
-/* ================= GOOGLE CALENDAR CONFIG ================= */
 async function createCalendarEvent(name, email, appointmentString, duration) {
     try {
-        // Safety check to prevent the "not defined" error
-        if (typeof calendar === 'undefined') {
-            console.error("❌ Google Calendar object is not initialized at the top of the file!");
-            return "https://meet.google.com/lookup/meritrix";
-        }
-
         console.log(`[PROCESS] Creating event for: ${appointmentString}`);
 
+        // 1. Precise Date Parsing
         const parts = appointmentString.split(' at ');
         const datePart = parts[0].trim();
         const timeParts = parts[1].trim().split(' ');
@@ -44,45 +29,45 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
         if (timeParts[1] === 'PM' && finalHours !== 12) finalHours += 12;
         if (timeParts[1] === 'AM' && finalHours === 12) finalHours = 0;
 
-        const startDate = new Date(`${datePart}T${finalHours.toString().padStart(2, '0')}:${minutes}:00`);
-        const endDate = new Date(startDate.getTime() + (parseInt(duration) || 60) * 60000);
+        // Construct ISO strings that Google loves
+        const start = new Date(`${datePart}T${finalHours.toString().padStart(2, '0')}:${minutes}:00Z`);
+        const end = new Date(start.getTime() + (parseInt(duration) || 60) * 60000);
 
-      /* ================= THE FIX ================= */
-const event = {
-    summary: `Strategy Session: ${name}`,
-    description: `Consultation with Meritrix Global.\nClient: ${email}`,
-    start: { dateTime: startDate.toISOString(), timeZone: 'Africa/Lagos' },
-    end: { dateTime: endDate.toISOString(), timeZone: 'Africa/Lagos' },
-    // 1. MUST include the organizer in the attendees list
-    attendees: [
-        { email: 'meritrixconsult@gmail.com', responseStatus: 'accepted' },
-        { email: email }
-    ],
-    conferenceData: {
-        createRequest: { 
-            requestId: `meritrix-${Date.now()}`, // Must be unique every time
-            conferenceSolutionKey: { type: 'meet' } 
-        }
-    },
-};
+        const event = {
+            summary: `Strategy Session: ${name}`,
+            description: `Consultation with Meritrix Global.\nClient: ${email}`,
+            start: { dateTime: start.toISOString() },
+            end: { dateTime: end.toISOString() },
+            attendees: [
+                { email: 'meritrixconsult@gmail.com' },
+                { email: email }
+            ],
+            conferenceData: {
+                createRequest: { 
+                    requestId: `mtx-${Date.now()}`, 
+                    conferenceSolutionKey: { type: 'hangoutsMeet' } 
+                }
+            },
+        };
 
-const response = await calendar.events.insert({
-    calendarId: 'meritrixconsult@gmail.com',
-    resource: event,
-    // 2. CRITICAL: This must be set to 1 to trigger Google Meet generation
-    conferenceDataVersion: 1, 
-    sendUpdates: 'all' // This notifies the client automatically
-});
+        // 2. THE CRITICAL PART: conferenceDataVersion MUST be here
+        const response = await calendar.events.insert({
+            calendarId: 'primary', // Use 'primary' to ensure it hits the main calendar
+            resource: event,
+            conferenceDataVersion: 1, 
+        });
 
         const meetLink = response.data.conferenceData?.entryPoints?.find(ep => ep.entryPointType === 'video')?.uri;
+        
+        console.log("✅ New Meet Link Generated:", meetLink);
         return meetLink || "https://meet.google.com/lookup/meritrix"; 
 
     } catch (error) {
-        console.error("❌ Calendar Error Detail:", error.message);
+        // This will now log the EXACT field Google is complaining about
+        console.error("❌ Calendar Error Detail:", error.response?.data?.error?.errors || error.message);
         return "https://meet.google.com/lookup/meritrix"; 
     }
 }
-
 /* ================= HELPERS: EMAIL LOGIC ================= */
 
 async function sendEmails(name, email, duration, meetingLink, appointmentString) {
