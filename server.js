@@ -13,6 +13,16 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 app.use(cors());
 app.use(express.json());
 
+/* ================= GOOGLE CALENDAR INITIALIZATION ================= */
+// 1. Setup Auth
+const auth = new google.auth.GoogleAuth({
+  keyFile: path.join(__dirname, 'service-account.json'), 
+  scopes: ['https://www.googleapis.com/auth/calendar'],
+});
+
+// 2. Setup the Calendar Object (This is what the function is looking for!)
+const calendar = google.calendar({ version: 'v3', auth });
+
 
 /* ================= GOOGLE CALENDAR CONFIG ================= */
 async function createCalendarEvent(name, email, appointmentString, duration) {
