@@ -196,6 +196,30 @@ app.post("/verify-payment", async (req, res) => {
     }
 });
 
+
+
+
+// TEMPORARY TEST ROUTE: Visit https://meritrix-backend.onrender.com/test-calendar
+app.get("/test-calendar", async (req, res) => {
+    try {
+        const testLink = await createCalendarEvent(
+            "Test User", 
+            "your-email@gmail.com", 
+            "2026-04-01 at 10:00 AM", 
+            "30"
+        );
+        res.json({ success: true, meetLink: testLink });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+
+
+
+
+
+
 // This gives the Cron-job something to find!
 app.get("/", (req, res) => {
   res.status(200).send("Meritrix Backend is Live and Awake.");
