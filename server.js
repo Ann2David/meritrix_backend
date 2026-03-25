@@ -58,7 +58,7 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
             conferenceData: {
                 createRequest: { 
                     requestId: `mtx-${Date.now()}`, 
-                    conferenceSolutionKey: { type: 'hangoutsMeet' } 
+                    conferenceSolutionKey: { type: 'meet' } 
                 }
             },
         };
