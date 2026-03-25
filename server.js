@@ -47,29 +47,32 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
         const startDate = new Date(`${datePart}T${finalHours.toString().padStart(2, '0')}:${minutes}:00`);
         const endDate = new Date(startDate.getTime() + (parseInt(duration) || 60) * 60000);
 
-        const event = {
+      /* ================= THE FIX ================= */
+const event = {
     summary: `Strategy Session: ${name}`,
     description: `Consultation with Meritrix Global.\nClient: ${email}`,
-    start: { dateTime: startDate.toISOString() },
-    end: { dateTime: endDate.toISOString() },
-    // ADD THIS: It helps Google validate the meeting organizer
+    start: { dateTime: startDate.toISOString(), timeZone: 'Africa/Lagos' },
+    end: { dateTime: endDate.toISOString(), timeZone: 'Africa/Lagos' },
+    // 1. MUST include the organizer in the attendees list
     attendees: [
-        { email: email }, 
-        { email: 'meritrixconsult@gmail.com' }
+        { email: 'meritrixconsult@gmail.com', responseStatus: 'accepted' },
+        { email: email }
     ],
     conferenceData: {
         createRequest: { 
-            requestId: `mtx-${Date.now()}`, 
-            conferenceSolutionKey: { type: 'hangoutsMeet' } // Use 'hangoutsMeet' or 'meet'
+            requestId: `meritrix-${Date.now()}`, // Must be unique every time
+            conferenceSolutionKey: { type: 'hangoutsMeet' } 
         }
     },
 };
 
-        const response = await calendar.events.insert({
-            calendarId: 'meritrixconsult@gmail.com',
-            resource: event,
-            conferenceDataVersion: 1, 
-        });
+const response = await calendar.events.insert({
+    calendarId: 'meritrixconsult@gmail.com',
+    resource: event,
+    // 2. CRITICAL: This must be set to 1 to trigger Google Meet generation
+    conferenceDataVersion: 1, 
+    sendUpdates: 'all' // This notifies the client automatically
+});
 
         const meetLink = response.data.conferenceData?.entryPoints?.find(ep => ep.entryPointType === 'video')?.uri;
         return meetLink || "https://meet.google.com/lookup/meritrix"; 
