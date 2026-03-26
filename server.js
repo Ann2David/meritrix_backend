@@ -92,7 +92,7 @@ async function sendEmails(name, email, duration, meetingLink, appointmentString)
       url: finalLink,
       status: 'CONFIRMED',
       busyStatus: 'BUSY',
-      organizer: { name: 'Victoria', email: 'bookings@meritrixglobal.com' },
+      organizer: { name: 'Meritrix', email: 'bookings@meritrixglobal.com' },
       attendees: [{ name: name, email: email, rsvp: true }]
     });
 
