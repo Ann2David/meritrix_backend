@@ -28,7 +28,7 @@ const calendar = google.calendar({ version: 'v3', auth });
 /* ================= GOOGLE CALENDAR INITIALIZATION ================= */
  async function createCalendarEvent(name, email, appointmentString, duration) {
     try {
-        const myStableMeetLink = "https://meet.google.com/cth-phso-mhq"; 
+        const myStableMeetLink = "https://meet.google.com/tie-farj-eyz"; 
 
         // 1. Precise Date Parsing (Splits "2026-04-01 at 10:00 AM")
         const parts = appointmentString.split(' at ');
