@@ -100,7 +100,7 @@ async function sendEmails(name, email, duration, meetingLink, appointmentString)
 
     // 1. Client Email
     await resend.emails.send({
-      from: 'Victoria <bookings@meritrixglobal.com>',
+      from: 'Meritrix <bookings@meritrixglobal.com>',
       to: email,
       subject: 'Session Activated | Meritrix Global',
       attachments: attachments,
