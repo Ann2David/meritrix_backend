@@ -66,7 +66,7 @@ const calendar = google.calendar({ version: 'v3', auth });
 
     } catch (error) {
         console.error("❌ Backend Error:", error.message);
-        return "https://meet.google.com/cth-phso-mhq"; 
+        return "https://meet.google.com/tie-farj-eyz"; 
     }
 }
 /* ================= HELPERS: EMAIL LOGIC ================= */
