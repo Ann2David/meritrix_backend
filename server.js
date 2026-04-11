@@ -5,7 +5,7 @@ const cors = require("cors");
 const { Resend } = require("resend");
 const { google } = require('googleapis');
 const path = require('path');
-const ics = require('ics'); // NEW: For calendar attachments
+const ics = require('ics');
 
 const app = express();
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -13,24 +13,20 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 app.use(cors());
 app.use(express.json());
 
-
 /* ================= GOOGLE CALENDAR INITIALIZATION ================= */
 
-// 1. Setup Auth (This tells Google who the robot is)
 const auth = new google.auth.GoogleAuth({
   keyFile: path.join(__dirname, 'service-account.json'), 
   scopes: ['https://www.googleapis.com/auth/calendar'],
 });
 
-// 2. Setup the Calendar Object (CRITICAL: This defines the 'calendar' variable)
 const calendar = google.calendar({ version: 'v3', auth });
 
-/* ================= GOOGLE CALENDAR INITIALIZATION ================= */
- async function createCalendarEvent(name, email, appointmentString, duration) {
-    try {
-        const myStableMeetLink = "https://meet.google.com/tie-farj-eyz"; 
+/* ================= NEW: AVAILABILITY CHECKER ================= */
 
-        // 1. Precise Date Parsing (Splits "2026-04-01 at 10:00 AM")
+async function isSlotBusy(appointmentString, duration) {
+    try {
+        // 1. Parse the string "2026-04-01 at 10:00 AM"
         const parts = appointmentString.split(' at ');
         const datePart = parts[0].trim();
         const timeParts = parts[1].trim().split(' ');
@@ -40,22 +36,72 @@ const calendar = google.calendar({ version: 'v3', auth });
         if (timeParts[1] === 'PM' && finalHours !== 12) finalHours += 12;
         if (timeParts[1] === 'AM' && finalHours === 12) finalHours = 0;
 
-        // 2. Create the Start Time object
+        // 2. Define Start and End range
         const start = new Date(`${datePart}T${finalHours.toString().padStart(2, '0')}:${minutes}:00Z`);
-        
-        // 3. DYNAMIC MATH: Add the duration (30 or 60) to the start time
-        // We multiply by 60000 to convert minutes to milliseconds
+        const end = new Date(start.getTime() + (parseInt(duration) || 60) * 60000);
+
+        // 3. Ask Google for events in this range
+        const response = await calendar.events.list({
+            calendarId: 'meritrixconsult@gmail.com',
+            timeMin: start.toISOString(),
+            timeMax: end.toISOString(),
+            singleEvents: true,
+        });
+
+        // If items > 0, the slot is taken
+        return response.data.items.length > 0;
+    } catch (error) {
+        console.error("Conflict Check Error:", error.message);
+        return false; // Default to free if check fails to avoid blocking users
+    }
+}
+
+/* ================= ROUTES ================= */
+
+// NEW ROUTE: Check availability before opening payment window
+app.post("/check-availability", async (req, res) => {
+    const { appointment, duration } = req.body;
+    
+    if (!appointment) return res.status(400).json({ error: "Missing appointment string" });
+
+    const busy = await isSlotBusy(appointment, duration);
+
+    if (busy) {
+        return res.status(400).json({ 
+            available: false, 
+            message: "This slot was just booked by someone else. Please select another time." 
+        });
+    }
+
+    res.status(200).json({ available: true });
+});
+
+/* ================= CALENDAR & EMAIL HELPERS ================= */
+
+async function createCalendarEvent(name, email, appointmentString, duration) {
+    try {
+        const myStableMeetLink = "https://meet.google.com/tie-farj-eyz"; 
+
+        const parts = appointmentString.split(' at ');
+        const datePart = parts[0].trim();
+        const timeParts = parts[1].trim().split(' ');
+        let [hours, minutes] = timeParts[0].split(':');
+
+        let finalHours = parseInt(hours);
+        if (timeParts[1] === 'PM' && finalHours !== 12) finalHours += 12;
+        if (timeParts[1] === 'AM' && finalHours === 12) finalHours = 0;
+
+        const start = new Date(`${datePart}T${finalHours.toString().padStart(2, '0')}:${minutes}:00Z`);
         const end = new Date(start.getTime() + (parseInt(duration) || 60) * 60000);
 
         const event = {
             summary: `Strategy Session (${duration}m): ${name}`,
             description: `Consultation with Meritrix Global.\nClient: ${email}\nJoin here: ${myStableMeetLink}`,
             start: { dateTime: start.toISOString() },
-            end: { dateTime: end.toISOString() }, // This will now be 10:30 or 11:00 correctly!
+            end: { dateTime: end.toISOString() },
             location: myStableMeetLink
         };
 
-        // 4. Insert into YOUR calendar
         await calendar.events.insert({
             calendarId: 'meritrixconsult@gmail.com', 
             resource: event,
@@ -65,17 +111,15 @@ const calendar = google.calendar({ version: 'v3', auth });
         return myStableMeetLink; 
 
     } catch (error) {
-        console.error("❌ Backend Error:", error.message);
+        console.error("❌ Calendar Insert Error:", error.message);
         return "https://meet.google.com/tie-farj-eyz"; 
     }
 }
-/* ================= HELPERS: EMAIL LOGIC ================= */
 
 async function sendEmails(name, email, duration, meetingLink, appointmentString) {
   try {
     const finalLink = (meetingLink && meetingLink.startsWith('http')) ? meetingLink : 'https://calendar.google.com';
 
-    // Parse for ICS file
     const parts = appointmentString.split(' at ');
     const [y, m, d] = parts[0].split('-').map(Number);
     const [time, modifier] = parts[1].split(' ');
@@ -90,15 +134,12 @@ async function sendEmails(name, email, duration, meetingLink, appointmentString)
       description: `Join Meeting: ${finalLink}`,
       location: 'Google Meet',
       url: finalLink,
-      status: 'CONFIRMED',
-      busyStatus: 'BUSY',
       organizer: { name: 'Meritrix', email: 'bookings@meritrixglobal.com' },
       attendees: [{ name: name, email: email, rsvp: true }]
     });
 
     const attachments = !error ? [{ content: Buffer.from(value).toString('base64'), filename: 'invite.ics' }] : [];
 
-    // 1. Client Email
     await resend.emails.send({
       from: 'Meritrix <bookings@meritrixglobal.com>',
       to: email,
@@ -121,7 +162,6 @@ async function sendEmails(name, email, duration, meetingLink, appointmentString)
       `
     });
 
-    // 2. Admin Notification
     await resend.emails.send({
       from: 'System <bookings@meritrixglobal.com>',
       to: 'meritrixconsult@gmail.com',
@@ -129,32 +169,24 @@ async function sendEmails(name, email, duration, meetingLink, appointmentString)
       html: `<p>User <strong>${name}</strong> has paid and booked a ${duration} min session.</p>`
     });
 
-    console.log("✅ Emails & ICS sent.");
-  } catch (error) {
-    console.error("❌ Resend Error:", error.message);
-  }
+    console.log("✅ Emails sent.");
+  } catch (err) { console.error("Email Error:", err.message); }
 }
 
 /* ================= VERIFY PAYMENT ROUTE ================= */
 
-// ... (Your imports and initializations remain the same) ...
-
 app.post("/verify-payment", async (req, res) => {
-    // FIX: Added 'transaction_id' here just in case Flutterwave sends it that way
     const { name, email, duration, appointment, reference, transaction_id, paymentProvider } = req.body;
-
     console.log(`[1/3] Verifying payment for ${email}...`);
 
     try {
         let paymentVerified = false;
-
         if (paymentProvider === "paystack") {
             const resp = await axios.get(`https://api.paystack.co/transaction/verify/${reference}`, {
                 headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }
             });
             paymentVerified = resp.data.data.status === "success";
         } else if (paymentProvider === "flutterwave") {
-            // Use transaction_id or reference depending on what the frontend sends
             const idToVerify = transaction_id || reference;
             const resp = await axios.get(`https://api.flutterwave.com/v3/transactions/${idToVerify}/verify`, {
                 headers: { Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}` }
@@ -163,73 +195,28 @@ app.post("/verify-payment", async (req, res) => {
         }
 
         if (paymentVerified) {
-            console.log(`[2/3] Payment Success. Sending instant response to user...`);
-            
-            res.status(200).json({ success: true, message: "Booking confirmed! Check your email." });
-
+            res.status(200).json({ success: true, message: "Booking confirmed!" });
             (async () => {
                 try {
-                    // This now correctly uses the 30 or 60 from the frontend
                     const meetLink = await createCalendarEvent(name, email, appointment, duration);
                     await sendEmails(name, email, duration, meetLink, appointment);
-                    console.log(`[3/3] Background tasks finished for ${email}`);
-                } catch (bgError) {
-                    console.error("🚨 Background Task Error:", bgError.message);
-                }
+                } catch (bgError) { console.error("🚨 Background Error:", bgError.message); }
             })();
-            
-            return; 
+            return;
         }
-
-        res.status(400).json({ success: false, message: "Payment could not be verified." });
-
+        res.status(400).json({ success: false, message: "Payment failed verification." });
     } catch (error) {
         console.error("🚨 System Error:", error.message);
         if (!res.headersSent) res.status(500).json({ message: "Internal Server Error" });
     }
 });
 
-// ... (Rest of your file) ...
+/* ================= HEALTH & PORT ================= */
 
+app.get("/", (req, res) => res.status(200).send("Meritrix Backend Active."));
+app.get("/health", (req, res) => res.status(200).json({ status: "up" }));
 
-
-
-// TEMPORARY TEST ROUTE: Visit https://meritrix-backend.onrender.com/test-calendar
-app.get("/test-calendar", async (req, res) => {
-    try {
-        const testLink = await createCalendarEvent(
-            "Test User", 
-            "meritrixconsult@gmail.com", 
-            "2026-04-01 at 10:00 AM", 
-            "30"
-        );
-        res.json({ success: true, meetLink: testLink });
-    } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
-    }
-});
-
-
-
-
-
-
-
-// This gives the Cron-job something to find!
-app.get("/", (req, res) => {
-  res.status(200).send("Meritrix Backend is Live and Awake.");
-});
-
-// Or a specific health check route
-app.get("/health", (req, res) => {
-  res.status(200).json({ status: "up" });
-});
-
-
-// Use the port Render gives you, or default to 3000
 const PORT = process.env.PORT || 3000;
-
-// CRITICAL: You must include '0.0.0.0' so Render can "see" the port
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Server is officially live on port ${PORT}`);
+    console.log(`🚀 Server running on port ${PORT}`);
 });
