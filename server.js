@@ -22,13 +22,12 @@ const auth = new google.auth.GoogleAuth({
 
 const calendar = google.calendar({ version: 'v3', auth });
 
-/* ================= NEW: AVAILABILITY CHECKER ================= */
+/* ================= UPDATED: RELIABLE AVAILABILITY CHECKER ================= */
 
 async function isSlotBusy(appointmentString, duration) {
     try {
-        // 1. Parse the string "2026-04-01 at 10:00 AM"
         const parts = appointmentString.split(' at ');
-        const datePart = parts[0].trim();
+        const datePart = parts[0].trim(); 
         const timeParts = parts[1].trim().split(' ');
         let [hours, minutes] = timeParts[0].split(':');
 
@@ -36,40 +35,48 @@ async function isSlotBusy(appointmentString, duration) {
         if (timeParts[1] === 'PM' && finalHours !== 12) finalHours += 12;
         if (timeParts[1] === 'AM' && finalHours === 12) finalHours = 0;
 
-        // 2. Define Start and End range
-        const start = new Date(`${datePart}T${finalHours.toString().padStart(2, '0')}:${minutes}:00Z`);
-        const end = new Date(start.getTime() + (parseInt(duration) || 60) * 60000);
+        // 1. Create a local date string without the 'Z' to avoid UTC shifts
+        // We use the Africa/Lagos offset (+01:00) to be precise
+        const startTimeString = `${datePart}T${finalHours.toString().padStart(2, '0')}:${minutes}:00+01:00`;
+        const start = new Date(startTimeString);
+        
+        // 2. We check from 1 minute AFTER start to 1 minute BEFORE end
+        // This prevents "back-to-back" meetings from showing as a conflict
+        const timeMin = new Date(start.getTime() + 60000).toISOString(); 
+        const timeMax = new Date(start.getTime() + (parseInt(duration) - 1) * 60000).toISOString();
 
-        // 3. Ask Google for events in this range
+        console.log(`Checking calendar from ${timeMin} to ${timeMax}`);
+
         const response = await calendar.events.list({
             calendarId: 'meritrixconsult@gmail.com',
-            timeMin: start.toISOString(),
-            timeMax: end.toISOString(),
+            timeMin: timeMin,
+            timeMax: timeMax,
             singleEvents: true,
+            timeZone: 'Africa/Lagos' 
         });
 
-        // If items > 0, the slot is taken
-        return response.data.items.length > 0;
+        const isBusy = response.data.items.length > 0;
+        if (isBusy) console.log("⚠️ Conflict detected on calendar.");
+        
+        return isBusy;
     } catch (error) {
         console.error("Conflict Check Error:", error.message);
-        return false; // Default to free if check fails to avoid blocking users
+        return false; 
     }
 }
 
 /* ================= ROUTES ================= */
 
-// NEW ROUTE: Check availability before opening payment window
 app.post("/check-availability", async (req, res) => {
     const { appointment, duration } = req.body;
-    
-    if (!appointment) return res.status(400).json({ error: "Missing appointment string" });
+    if (!appointment) return res.status(400).json({ error: "Missing appointment" });
 
     const busy = await isSlotBusy(appointment, duration);
 
     if (busy) {
         return res.status(400).json({ 
             available: false, 
-            message: "This slot was just booked by someone else. Please select another time." 
+            message: "Slot unavailable. Please select another time." 
         });
     }
 
@@ -91,7 +98,9 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
         if (timeParts[1] === 'PM' && finalHours !== 12) finalHours += 12;
         if (timeParts[1] === 'AM' && finalHours === 12) finalHours = 0;
 
-        const start = new Date(`${datePart}T${finalHours.toString().padStart(2, '0')}:${minutes}:00Z`);
+        // IMPORTANT: Use +01:00 here as well so the event is created in WAT
+        const startIso = `${datePart}T${finalHours.toString().padStart(2, '0')}:${minutes}:00+01:00`;
+        const start = new Date(startIso);
         const end = new Date(start.getTime() + (parseInt(duration) || 60) * 60000);
 
         const event = {
@@ -99,7 +108,10 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
             description: `Consultation with Meritrix Global.\nClient: ${email}\nJoin here: ${myStableMeetLink}`,
             start: { dateTime: start.toISOString() },
             end: { dateTime: end.toISOString() },
-            location: myStableMeetLink
+            location: myStableMeetLink,
+            // Ensure the event is pinned to Lagos time
+            start: { dateTime: start.toISOString(), timeZone: 'Africa/Lagos' },
+            end: { dateTime: end.toISOString(), timeZone: 'Africa/Lagos' }
         };
 
         await calendar.events.insert({
@@ -107,14 +119,14 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
             resource: event,
         });
 
-        console.log(`✅ Success: ${duration}min event added to calendar.`);
         return myStableMeetLink; 
-
     } catch (error) {
-        console.error("❌ Calendar Insert Error:", error.message);
+        console.error("❌ Calendar Error:", error.message);
         return "https://meet.google.com/tie-farj-eyz"; 
     }
 }
+
+// ... (Rest of your verify-payment and health routes remain the same) ...
 
 async function sendEmails(name, email, duration, meetingLink, appointmentString) {
   try {
