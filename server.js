@@ -39,14 +39,14 @@ app.get("/get-booked-slots", async (req, res) => {
         });
 
         const bookedTimes = response.data.items.map(event => {
-            const dateObj = new Date(event.start.dateTime);
-            return dateObj.toLocaleTimeString('en-US', { 
-                hour: 'numeric', 
-                minute: '2-digit', 
-                hour12: true,
-                timeZone: 'Africa/Lagos' 
-            });
-        });
+    const dateObj = new Date(event.start.dateTime);
+    return dateObj.toLocaleTimeString('en-US', { 
+        hour: '2-digit',   // Changed from 'numeric' to '2-digit'
+        minute: '2-digit', 
+        hour12: true,
+        timeZone: 'Africa/Lagos' 
+    });
+});
 
         res.json({ bookedTimes });
     } catch (error) {
