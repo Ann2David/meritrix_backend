@@ -22,8 +22,40 @@ const auth = new google.auth.GoogleAuth({
 
 const calendar = google.calendar({ version: 'v3', auth });
 
-/* ================= UPDATED: RELIABLE AVAILABILITY CHECKER ================= */
+/* ================= AVAILABILITY LOGIC ================= */
 
+// 1. Fetches booked times for a specific date (to gray out buttons on frontend)
+app.get("/get-booked-slots", async (req, res) => {
+    const { date } = req.query; // Expects "YYYY-MM-DD"
+    if (!date) return res.status(400).json({ error: "Date is required" });
+
+    try {
+        const response = await calendar.events.list({
+            calendarId: 'meritrixconsult@gmail.com',
+            timeMin: `${date}T00:00:00+01:00`,
+            timeMax: `${date}T23:59:59+01:00`,
+            singleEvents: true,
+            timeZone: 'Africa/Lagos'
+        });
+
+        const bookedTimes = response.data.items.map(event => {
+            const dateObj = new Date(event.start.dateTime);
+            return dateObj.toLocaleTimeString('en-US', { 
+                hour: 'numeric', 
+                minute: '2-digit', 
+                hour12: true,
+                timeZone: 'Africa/Lagos' 
+            });
+        });
+
+        res.json({ bookedTimes });
+    } catch (error) {
+        console.error("Error fetching slots:", error.message);
+        res.status(500).json({ error: "Could not fetch booked slots" });
+    }
+});
+
+// 2. Strict check using FreeBusy (Safety net before payment)
 async function isSlotBusy(appointmentString, duration) {
     try {
         const parts = appointmentString.split(' at ');
@@ -35,30 +67,21 @@ async function isSlotBusy(appointmentString, duration) {
         if (timeParts[1] === 'PM' && finalHours !== 12) finalHours += 12;
         if (timeParts[1] === 'AM' && finalHours === 12) finalHours = 0;
 
-        // 1. Create a local date string without the 'Z' to avoid UTC shifts
-        // We use the Africa/Lagos offset (+01:00) to be precise
-        const startTimeString = `${datePart}T${finalHours.toString().padStart(2, '0')}:${minutes}:00+01:00`;
-        const start = new Date(startTimeString);
-        
-        // 2. We check from 1 minute AFTER start to 1 minute BEFORE end
-        // This prevents "back-to-back" meetings from showing as a conflict
-        const timeMin = new Date(start.getTime() + 60000).toISOString(); 
-        const timeMax = new Date(start.getTime() + (parseInt(duration) - 1) * 60000).toISOString();
+        const startStr = `${datePart}T${finalHours.toString().padStart(2, '0')}:${minutes}:00+01:00`;
+        const start = new Date(startStr);
+        const end = new Date(start.getTime() + (parseInt(duration) || 60) * 60000);
 
-        console.log(`Checking calendar from ${timeMin} to ${timeMax}`);
-
-        const response = await calendar.events.list({
-            calendarId: 'meritrixconsult@gmail.com',
-            timeMin: timeMin,
-            timeMax: timeMax,
-            singleEvents: true,
-            timeZone: 'Africa/Lagos' 
+        const check = await calendar.freebusy.query({
+            requestBody: {
+                timeMin: start.toISOString(),
+                timeMax: end.toISOString(),
+                timeZone: 'Africa/Lagos',
+                items: [{ id: 'meritrixconsult@gmail.com' }]
+            }
         });
 
-        const isBusy = response.data.items.length > 0;
-        if (isBusy) console.log("⚠️ Conflict detected on calendar.");
-        
-        return isBusy;
+        const busySlots = check.data.calendars['meritrixconsult@gmail.com'].busy;
+        return busySlots.length > 0;
     } catch (error) {
         console.error("Conflict Check Error:", error.message);
         return false; 
@@ -72,14 +95,12 @@ app.post("/check-availability", async (req, res) => {
     if (!appointment) return res.status(400).json({ error: "Missing appointment" });
 
     const busy = await isSlotBusy(appointment, duration);
-
     if (busy) {
         return res.status(400).json({ 
             available: false, 
-            message: "Slot unavailable. Please select another time." 
+            message: "This slot was just taken. Please pick another time." 
         });
     }
-
     res.status(200).json({ available: true });
 });
 
@@ -88,7 +109,6 @@ app.post("/check-availability", async (req, res) => {
 async function createCalendarEvent(name, email, appointmentString, duration) {
     try {
         const myStableMeetLink = "https://meet.google.com/tie-farj-eyz"; 
-
         const parts = appointmentString.split(' at ');
         const datePart = parts[0].trim();
         const timeParts = parts[1].trim().split(' ');
@@ -98,27 +118,19 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
         if (timeParts[1] === 'PM' && finalHours !== 12) finalHours += 12;
         if (timeParts[1] === 'AM' && finalHours === 12) finalHours = 0;
 
-        // IMPORTANT: Use +01:00 here as well so the event is created in WAT
         const startIso = `${datePart}T${finalHours.toString().padStart(2, '0')}:${minutes}:00+01:00`;
         const start = new Date(startIso);
         const end = new Date(start.getTime() + (parseInt(duration) || 60) * 60000);
 
         const event = {
             summary: `Strategy Session (${duration}m): ${name}`,
-            description: `Consultation with Meritrix Global.\nClient: ${email}\nJoin here: ${myStableMeetLink}`,
-            start: { dateTime: start.toISOString() },
-            end: { dateTime: end.toISOString() },
-            location: myStableMeetLink,
-            // Ensure the event is pinned to Lagos time
+            description: `Consultation with Meritrix Global.\nClient: ${email}\nJoin: ${myStableMeetLink}`,
             start: { dateTime: start.toISOString(), timeZone: 'Africa/Lagos' },
-            end: { dateTime: end.toISOString(), timeZone: 'Africa/Lagos' }
+            end: { dateTime: end.toISOString(), timeZone: 'Africa/Lagos' },
+            location: myStableMeetLink
         };
 
-        await calendar.events.insert({
-            calendarId: 'meritrixconsult@gmail.com', 
-            resource: event,
-        });
-
+        await calendar.events.insert({ calendarId: 'meritrixconsult@gmail.com', resource: event });
         return myStableMeetLink; 
     } catch (error) {
         console.error("❌ Calendar Error:", error.message);
@@ -126,12 +138,9 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
     }
 }
 
-// ... (Rest of your verify-payment and health routes remain the same) ...
-
 async function sendEmails(name, email, duration, meetingLink, appointmentString) {
   try {
     const finalLink = (meetingLink && meetingLink.startsWith('http')) ? meetingLink : 'https://calendar.google.com';
-
     const parts = appointmentString.split(' at ');
     const [y, m, d] = parts[0].split('-').map(Number);
     const [time, modifier] = parts[1].split(' ');
@@ -161,14 +170,8 @@ async function sendEmails(name, email, duration, meetingLink, appointmentString)
         <div style="font-family: sans-serif; background-color: #000; padding: 40px; color: #fff; text-align: center;">
           <div style="max-width: 500px; margin: 0 auto; background: #111; border: 1px solid #333; padding: 40px; border-radius: 24px; border-bottom: 4px solid #ff8811;">
             <h2 style="font-size: 26px; font-weight: 600; margin-bottom: 20px;">Payment Verified</h2>
-            <p style="color: #ccc;">Hello ${name}, your ${duration}-minute session is confirmed.</p>
-            <div style="background-color: #1a1a1a; border-radius: 12px; padding: 25px; margin: 30px 0; border: 1px solid #333; text-align: left;">
-               <p style="margin: 0; color: #fff; font-weight: 600;">Meeting Access:</p>
-               <a href="${finalLink}" target="_blank" style="display: inline-block; background: #ff8811; color: #fff; text-decoration: none; padding: 12px 25px; border-radius: 8px; font-weight: bold; margin-top: 10px;">
-                Join Google Meet
-               </a>
-               <p style="color: #888; font-size: 12px; margin-top: 15px;">A calendar invite has been attached to this email.</p>
-            </div>
+            <p>Hello ${name}, your ${duration}-minute session is confirmed.</p>
+            <a href="${finalLink}" target="_blank" style="display: inline-block; background: #ff8811; color: #fff; text-decoration: none; padding: 12px 25px; border-radius: 8px; font-weight: bold; margin-top: 10px;">Join Google Meet</a>
           </div>
         </div>
       `
@@ -180,8 +183,6 @@ async function sendEmails(name, email, duration, meetingLink, appointmentString)
       subject: `✅ NEW BOOKING: ${name}`,
       html: `<p>User <strong>${name}</strong> has paid and booked a ${duration} min session.</p>`
     });
-
-    console.log("✅ Emails sent.");
   } catch (err) { console.error("Email Error:", err.message); }
 }
 
@@ -189,8 +190,6 @@ async function sendEmails(name, email, duration, meetingLink, appointmentString)
 
 app.post("/verify-payment", async (req, res) => {
     const { name, email, duration, appointment, reference, transaction_id, paymentProvider } = req.body;
-    console.log(`[1/3] Verifying payment for ${email}...`);
-
     try {
         let paymentVerified = false;
         if (paymentProvider === "paystack") {
