@@ -140,14 +140,18 @@ async function createCalendarEvent(name, email, appointmentString, duration) {
 
 async function sendEmails(name, email, duration, meetingLink, appointmentString) {
   try {
-    const finalLink = (meetingLink && meetingLink.startsWith('http')) ? meetingLink : 'https://calendar.google.com';
+    const finalLink = (meetingLink && meetingLink.startsWith('http')) ? meetingLink : 'https://meet.google.com/tie-farj-eyz';
+
+    // Parse the date and time
     const parts = appointmentString.split(' at ');
     const [y, m, d] = parts[0].split('-').map(Number);
     const [time, modifier] = parts[1].split(' ');
     let [h, min] = time.split(':').map(Number);
+    
     if (modifier === 'PM' && h !== 12) h += 12;
     if (modifier === 'AM' && h === 12) h = 0;
 
+    // --- FIX START ---
     const { error, value } = ics.createEvent({
       start: [y, m, d, h, min],
       duration: { minutes: parseInt(duration) || 60 },
@@ -155,12 +159,23 @@ async function sendEmails(name, email, duration, meetingLink, appointmentString)
       description: `Join Meeting: ${finalLink}`,
       location: 'Google Meet',
       url: finalLink,
+      status: 'CONFIRMED',
+      busyStatus: 'BUSY',
+      startInputType: 'local', // CRITICAL: Tells the file to use local time, not UTC
+      startOutputType: 'local',
       organizer: { name: 'Meritrix', email: 'bookings@meritrixglobal.com' },
       attendees: [{ name: name, email: email, rsvp: true }]
     });
+    // --- FIX END ---
 
-    const attachments = !error ? [{ content: Buffer.from(value).toString('base64'), filename: 'invite.ics' }] : [];
+    const attachments = !error ? [{ 
+        content: Buffer.from(value).toString('base64'), 
+        filename: 'invite.ics',
+        type: 'text/calendar',
+        disposition: 'attachment'
+    }] : [];
 
+    // Send to Client
     await resend.emails.send({
       from: 'Meritrix <bookings@meritrixglobal.com>',
       to: email,
@@ -170,20 +185,31 @@ async function sendEmails(name, email, duration, meetingLink, appointmentString)
         <div style="font-family: sans-serif; background-color: #000; padding: 40px; color: #fff; text-align: center;">
           <div style="max-width: 500px; margin: 0 auto; background: #111; border: 1px solid #333; padding: 40px; border-radius: 24px; border-bottom: 4px solid #ff8811;">
             <h2 style="font-size: 26px; font-weight: 600; margin-bottom: 20px;">Payment Verified</h2>
-            <p>Hello ${name}, your ${duration}-minute session is confirmed.</p>
-            <a href="${finalLink}" target="_blank" style="display: inline-block; background: #ff8811; color: #fff; text-decoration: none; padding: 12px 25px; border-radius: 8px; font-weight: bold; margin-top: 10px;">Join Google Meet</a>
+            <p style="color: #ccc;">Hello ${name}, your session is confirmed for <strong>${appointmentString}</strong>.</p>
+            <div style="background-color: #1a1a1a; border-radius: 12px; padding: 25px; margin: 30px 0; border: 1px solid #333; text-align: left;">
+               <p style="margin: 0; color: #fff; font-weight: 600;">Meeting Access:</p>
+               <a href="${finalLink}" target="_blank" style="display: inline-block; background: #ff8811; color: #fff; text-decoration: none; padding: 12px 25px; border-radius: 8px; font-weight: bold; margin-top: 10px;">
+                Join Google Meet
+               </a>
+               <p style="color: #888; font-size: 12px; margin-top: 15px;">A calendar invite (.ics) is attached. Open it to add this to your phone's calendar.</p>
+            </div>
           </div>
         </div>
       `
     });
 
+    // Send to Admin
     await resend.emails.send({
       from: 'System <bookings@meritrixglobal.com>',
       to: 'meritrixconsult@gmail.com',
       subject: `✅ NEW BOOKING: ${name}`,
-      html: `<p>User <strong>${name}</strong> has paid and booked a ${duration} min session.</p>`
+      html: `<p><strong>${name}</strong> booked for <strong>${appointmentString}</strong> (${duration} mins).</p>`
     });
-  } catch (err) { console.error("Email Error:", err.message); }
+
+    console.log("✅ Emails sent correctly.");
+  } catch (err) { 
+    console.error("Email Error:", err.message); 
+  }
 }
 
 /* ================= VERIFY PAYMENT ROUTE ================= */
